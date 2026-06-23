@@ -1,0 +1,11 @@
+# Secrets / settings
+.env
+
+# Generated demo artifacts (recreated by the notebooks)
+sample_logs/
+inventory.db
+
+# Jupyter / Python
+.ipynb_checkpoints/
+__pycache__/
+*.pyc

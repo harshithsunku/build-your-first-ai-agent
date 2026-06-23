@@ -1,0 +1,13 @@
+# Core: notebooks 01, 02, 04, 05, 06 (raw OpenAI-compatible client)
+openai>=1.0
+
+# .env loading for notebooks 05-06 (others fall back to os.environ)
+python-dotenv>=1.0
+
+# Notebook 03 only (LangChain / LangGraph version of the same agent)
+langchain>=0.2
+langgraph>=0.2
+langchain-openai>=0.1
+
+# To run the notebooks
+jupyterlab>=4.0
