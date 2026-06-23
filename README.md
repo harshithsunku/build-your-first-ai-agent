@@ -44,19 +44,9 @@ table changes. That repetition *is* the lesson.
 
 Everything from notebook 02 onward is the same finite state machine:
 
-```
-        ┌─────────────────────────────────────────────┐
-        │                                             │
-        ▼                                             │
-  prompt the model  ──►  did it ask for a tool?       │
-                              │                        │
-                ┌─────────────┴─────────────┐          │
-                │ yes                        │ no       │
-                ▼                            ▼          │
-          call the tool              FINAL ANSWER ► stop│
-                │                                       │
-                └────────── feed result back ───────────┘
-```
+<p align="center">
+  <img src="docs/agent-loop.svg" alt="The agent loop: the user question and system prompt go to the model; if the model asks for a tool, your code executes it and feeds the result back into the transcript, looping; if not, the model returns a final answer and stops. max_iterations acts as a TTL to stop runaway loops." width="100%"/>
+</p>
 
 `max_iterations` is the **TTL / hop count** — it stops a runaway loop. The model only ever
 *requests* a tool by name + JSON arguments; **your** code executes it and feeds the result

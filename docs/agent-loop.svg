@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 420" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" role="img" aria-label="The agent loop: prompt the model, check for a tool call, execute the tool and feed the result back, otherwise return a final answer and stop.">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0d1117"/>
+      <stop offset="1" stop-color="#161b22"/>
+    </linearGradient>
+    <linearGradient id="modelG" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1f6feb"/>
+      <stop offset="1" stop-color="#1158c7"/>
+    </linearGradient>
+    <linearGradient id="toolG" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#8957e5"/>
+      <stop offset="1" stop-color="#6e40c9"/>
+    </linearGradient>
+    <linearGradient id="finalG" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#238636"/>
+      <stop offset="1" stop-color="#1a6e2c"/>
+    </linearGradient>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#8b949e"/>
+    </marker>
+    <marker id="arrowLoop" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#d29922"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="960" height="420" rx="14" fill="url(#bg)" stroke="#30363d" stroke-width="1"/>
+
+  <text x="32" y="46" fill="#e6edf3" font-size="22" font-weight="700">The agent loop</text>
+  <text x="32" y="70" fill="#8b949e" font-size="14">a finite state machine for tool use — the same ~35 lines from notebook 02 onward</text>
+
+  <!-- User question -->
+  <g>
+    <rect x="32" y="150" width="150" height="58" rx="10" fill="#161b22" stroke="#30363d" stroke-width="1.5"/>
+    <text x="107" y="176" fill="#e6edf3" font-size="14" font-weight="600" text-anchor="middle">User question</text>
+    <text x="107" y="195" fill="#8b949e" font-size="11.5" text-anchor="middle">+ system prompt</text>
+  </g>
+
+  <!-- Prompt the model -->
+  <g>
+    <rect x="246" y="148" width="178" height="62" rx="10" fill="url(#modelG)"/>
+    <text x="335" y="175" fill="#ffffff" font-size="15" font-weight="700" text-anchor="middle">Prompt the model</text>
+    <text x="335" y="195" fill="#cfe1ff" font-size="11.5" text-anchor="middle">send full transcript</text>
+  </g>
+
+  <!-- Decision diamond -->
+  <g>
+    <polygon points="560,179 624,135 688,179 624,223" fill="#161b22" stroke="#d29922" stroke-width="1.8"/>
+    <text x="624" y="174" fill="#e6edf3" font-size="13.5" font-weight="700" text-anchor="middle">Asked for</text>
+    <text x="624" y="191" fill="#e6edf3" font-size="13.5" font-weight="700" text-anchor="middle">a tool?</text>
+  </g>
+
+  <!-- Execute tool (yes branch, downward) -->
+  <g>
+    <rect x="520" y="300" width="208" height="66" rx="10" fill="url(#toolG)"/>
+    <text x="624" y="328" fill="#ffffff" font-size="15" font-weight="700" text-anchor="middle">Execute the tool</text>
+    <text x="624" y="348" fill="#e9ddff" font-size="11.5" text-anchor="middle">your code runs it, not the model</text>
+  </g>
+
+  <!-- Final answer (no branch, right) -->
+  <g>
+    <rect x="770" y="148" width="158" height="62" rx="10" fill="url(#finalG)"/>
+    <text x="849" y="175" fill="#ffffff" font-size="15" font-weight="700" text-anchor="middle">Final answer</text>
+    <text x="849" y="195" fill="#d6f5dd" font-size="11.5" text-anchor="middle">→ stop</text>
+  </g>
+
+  <!-- Arrows -->
+  <!-- user -> model -->
+  <line x1="182" y1="179" x2="240" y2="179" stroke="#8b949e" stroke-width="2" marker-end="url(#arrow)"/>
+  <!-- model -> diamond -->
+  <line x1="424" y1="179" x2="554" y2="179" stroke="#8b949e" stroke-width="2" marker-end="url(#arrow)"/>
+  <!-- diamond -> final (no) -->
+  <line x1="688" y1="179" x2="764" y2="179" stroke="#8b949e" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="726" y="170" fill="#3fb950" font-size="12.5" font-weight="700" text-anchor="middle">no</text>
+
+  <!-- diamond -> execute (yes) -->
+  <line x1="624" y1="223" x2="624" y2="294" stroke="#d29922" stroke-width="2" marker-end="url(#arrowLoop)"/>
+  <text x="642" y="262" fill="#d29922" font-size="12.5" font-weight="700" text-anchor="start">yes</text>
+
+  <!-- feed result back: execute -> down/left -> up to model (loop) -->
+  <path d="M520,333 H150 a14,14 0 0 1 -14,-14 V193" fill="none" stroke="#d29922" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#arrowLoop)"/>
+  <text x="300" y="356" fill="#d29922" font-size="12.5" font-weight="700" text-anchor="middle">feed tool result back into the transcript</text>
+
+  <!-- TTL note -->
+  <g>
+    <rect x="770" y="300" width="158" height="66" rx="10" fill="#161b22" stroke="#30363d" stroke-width="1.5"/>
+    <text x="849" y="326" fill="#e6edf3" font-size="13" font-weight="700" text-anchor="middle">max_iterations</text>
+    <text x="849" y="345" fill="#8b949e" font-size="11" text-anchor="middle">TTL / hop count —</text>
+    <text x="849" y="359" fill="#8b949e" font-size="11" text-anchor="middle">stops a runaway loop</text>
+  </g>
+</svg>
