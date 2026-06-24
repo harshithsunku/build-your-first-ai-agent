@@ -20,6 +20,14 @@ layer, using a network-operations theme. Each notebook maps to a layer of the
 Notebooks 04–06 deliberately reuse the exact control loop from notebook 02; only
 the **capability table** (the tools) changes. That repetition *is* the lesson.
 
+Each notebook also has a `*_with_ui.ipynb` twin: an exact copy of the core
+notebook with a small Gradio app appended (a chat box for 01, a question form +
+"agent trace" panel for 02–06). The UI cells **reuse the already-defined
+functions** (`chat`/`run_agent`/`explain`/`triage`/`ask_data` and the LangGraph
+`agent`) — they don't reimplement any logic. When you change a core notebook,
+mirror the change into its `_with_ui` twin (and vice-versa). Keep the core
+notebooks dependency-light; `gradio` is only imported in the twins.
+
 There is no application code, package, build system, or test suite. The
 deliverable is the notebooks themselves.
 

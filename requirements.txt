@@ -1,8 +1,10 @@
 # Core: notebooks 01, 02, 04, 05, 06 (raw OpenAI-compatible client)
 openai>=1.0
-
-# .env loading for notebooks 05-06 (others fall back to os.environ)
+# .env loading (every notebook; falls back to os.environ)
 python-dotenv>=1.0
+
+# Interactive browser UIs (the *_with_ui.ipynb notebooks)
+gradio>=4.0
 
 # Notebook 03 only (LangChain / LangGraph version of the same agent)
 langchain>=0.2

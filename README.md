@@ -38,6 +38,24 @@ exactly what a framework gives you "for free".
 Notebooks **04–06 reuse the exact control loop from notebook 02** — only the capability
 table changes. That repetition *is* the lesson.
 
+### Same notebooks, with a browser UI
+
+Each notebook also ships a `*_with_ui` twin that wraps the **identical** code in a small
+[Gradio](https://www.gradio.app/) app — a chat box for 01, and a question form with a live
+"agent trace" panel for 02–06. The core notebooks stay dependency-light and easy to read; the
+UI twins are there when you want something clickable to demo.
+
+| Core (read the code) | With UI (click and run) |
+|---|---|
+| `01_chat_completions_basics.ipynb` | [`01_chat_completions_basics_with_ui.ipynb`](01_chat_completions_basics_with_ui.ipynb) |
+| `02_agent_from_scratch.ipynb` | [`02_agent_from_scratch_with_ui.ipynb`](02_agent_from_scratch_with_ui.ipynb) |
+| `03_agent_with_langchain.ipynb` | [`03_agent_with_langchain_with_ui.ipynb`](03_agent_with_langchain_with_ui.ipynb) |
+| `04_codebase_explainer_agent.ipynb` | [`04_codebase_explainer_agent_with_ui.ipynb`](04_codebase_explainer_agent_with_ui.ipynb) |
+| `05_log_triage_agent.ipynb` | [`05_log_triage_agent_with_ui.ipynb`](05_log_triage_agent_with_ui.ipynb) |
+| `06_sql_data_agent.ipynb` | [`06_sql_data_agent_with_ui.ipynb`](06_sql_data_agent_with_ui.ipynb) |
+
+The UI twins add one dependency (`gradio`); run the last cell and a local web UI opens.
+
 ---
 
 ## The agent loop
@@ -164,8 +182,10 @@ build-your-first-ai-agent/
 ├── 04_codebase_explainer_agent.ipynb    # same loop + read-only filesystem tools
 ├── 05_log_triage_agent.ipynb            # same loop + read-only log tools
 ├── 06_sql_data_agent.ipynb              # same loop + read-only SQL tools
+├── *_with_ui.ipynb                      # the same six notebooks wrapped in a Gradio UI
+├── docs/agent-loop.svg                  # the agent-loop diagram used in this README
 ├── .env.example                         # provider config template (copy to .env)
-├── requirements.txt                     # openai, python-dotenv, langchain*, jupyterlab
+├── requirements.txt                     # openai, python-dotenv, langchain*, gradio, jupyterlab
 ├── AGENTS.md                            # guidance for AI coding agents in this repo
 ├── CONTRIBUTING.md
 ├── CODE_OF_CONDUCT.md
