@@ -94,16 +94,40 @@ back. The model talks; your loop acts.
 
 ## Quick Start
 
+### Linux / macOS
+
+A helper script creates a virtual environment, installs everything, and registers a Jupyter
+kernel:
+
 ```bash
 git clone https://github.com/harshithsunku/build-your-first-ai-agent.git
 cd build-your-first-ai-agent
 
-pip install -r requirements.txt
+./setup.sh                  # creates .venv, installs deps, registers a kernel, seeds .env
+source .venv/bin/activate   # activate the environment
 
-cp .env.example .env        # then edit .env with your provider + key
-
-jupyter lab                 # open notebook 01 and run top to bottom
+# edit .env with your provider + key, then:
+jupyter lab                 # pick the "Python (Build Your First AI Agent)" kernel
 ```
+
+> Prefer `source ./setup.sh` to have the venv left activated in your current shell.
+
+### Windows
+
+No virtualenv needed — with Python 3.8+ installed:
+
+```bat
+git clone https://github.com/harshithsunku/build-your-first-ai-agent.git
+cd build-your-first-ai-agent
+
+pip install -r requirements.txt
+copy .env.example .env       :: then edit .env with your provider + key
+
+jupyter lab                  :: open notebook 01 and run top to bottom
+```
+
+> A venv is optional on Windows too; if you use one, `python -m ipykernel install --user
+> --name ai-agent` registers a kernel just like the Linux script does.
 
 Run the notebooks **in order** (01 → 06). Each is self-contained and re-explains what it
 needs, but the narrative builds on the previous one.
@@ -197,7 +221,8 @@ build-your-first-ai-agent/
 ├── *_with_ui.ipynb                      # the same six notebooks wrapped in a Gradio UI
 ├── docs/agent-loop.svg                  # the agent-loop diagram used in this README
 ├── .env.example                         # provider config template (copy to .env)
-├── requirements.txt                     # openai, python-dotenv, langchain*, gradio, jupyterlab
+├── requirements.txt                     # openai, httpx, python-dotenv, langchain*, gradio, jupyterlab, ipykernel
+├── setup.sh                             # Linux/macOS: create .venv, install deps, register kernel
 ├── AGENTS.md                            # guidance for AI coding agents in this repo
 ├── CONTRIBUTING.md
 ├── CODE_OF_CONDUCT.md

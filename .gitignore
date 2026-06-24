@@ -6,6 +6,8 @@ sample_logs/
 inventory.db
 
 # Jupyter / Python
+.venv/
+venv/
 .ipynb_checkpoints/
 __pycache__/
 *.pyc
