@@ -58,6 +58,11 @@ Run with `jupyter lab`.
   `OPENAI_API_KEY`, `MODEL` from the environment with the same defaults
   (`https://api.openai.com/v1`, `set-me`, `gpt-4o-mini`). Every notebook loads
   `.env` first. Keep this block in sync if you change one notebook.
+- **`VERIFY_SSL` env var** (default `true`): when `false`, the config cell builds an
+  `httpx.Client(verify=False)` (plus an `httpx.AsyncClient` for notebook 03's
+  `ChatOpenAI`) and passes it via `http_client=` so the demos work behind
+  TLS-intercepting firewalls. This same block is duplicated in all 12 notebooks —
+  change it everywhere at once.
 - **OpenAI-compatible only**: all HTTP access goes through the `openai` client
   (or `langchain-openai`), so any OpenAI-compatible endpoint works.
 - **Two demo tools**, repeated in notebooks 2 and 3:

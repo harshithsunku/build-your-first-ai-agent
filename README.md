@@ -144,6 +144,18 @@ MODEL=qwen2.5:7b
 
 `.env` is git-ignored, so your key never gets committed.
 
+### Behind a corporate firewall?
+
+TLS-intercepting proxies can make HTTPS calls fail with certificate errors. Set
+`VERIFY_SSL=false` in `.env` to skip certificate verification — each notebook then hands the
+OpenAI SDK (and `ChatOpenAI` in notebook 03) a custom [`httpx`](https://www.python-httpx.org/)
+client with verification turned off. Leave it `true` (the default) on any normal network.
+
+```bash
+# .env — only when an intercepting firewall breaks TLS; trusted networks only
+VERIFY_SSL=false
+```
+
 ### Prerequisites
 
 | Component | Needs |
@@ -199,6 +211,10 @@ build-your-first-ai-agent/
 
 **`AuthenticationError` / 401.** Check `OPENAI_API_KEY` in `.env` and that `OPENAI_BASE_URL`
 matches the provider that issued the key.
+
+**`SSLError` / `CERTIFICATE_VERIFY_FAILED` / TLS errors.** You're probably behind a
+TLS-intercepting firewall or proxy. Set `VERIFY_SSL=false` in `.env` to skip certificate
+verification (trusted networks only).
 
 **The agent never calls a tool (notebooks 02–06).** Your model probably isn't tool-capable.
 Switch `MODEL` to something like `gpt-4o-mini`, `qwen2.5`, or `llama3.1`. Tiny (≈1B) models

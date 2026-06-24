@@ -1,5 +1,7 @@
 # Core: notebooks 01, 02, 04, 05, 06 (raw OpenAI-compatible client)
 openai>=1.0
+# Custom HTTP client so VERIFY_SSL=false works behind TLS-intercepting firewalls
+httpx>=0.24
 # .env loading (every notebook; falls back to os.environ)
 python-dotenv>=1.0
 
