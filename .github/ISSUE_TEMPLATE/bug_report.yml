@@ -1,0 +1,37 @@
+name: Bug report
+description: Something in a notebook doesn't work as described
+labels: [bug]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you expect, and what actually happened?
+    validations:
+      required: true
+  - type: input
+    id: notebook
+    attributes:
+      label: Which notebook?
+      placeholder: e.g. 04_codebase_explainer_agent.ipynb
+    validations:
+      required: true
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      description: OS, Python version, and how you set the provider.
+      value: |
+        - OS:
+        - Python:
+        - Provider (OpenAI / OpenRouter / LiteLLM / Ollama):
+        - MODEL:
+        - VERIFY_SSL:
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Error / traceback
+      description: Paste the full error. Do NOT include your API key.
+      render: text

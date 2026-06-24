@@ -1,0 +1,15 @@
+name: Question
+description: Ask about how something works or how to adapt it
+labels: [question]
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: Your question
+    validations:
+      required: true
+  - type: input
+    id: notebook
+    attributes:
+      label: Related notebook (if any)
+      placeholder: e.g. 02_agent_from_scratch.ipynb

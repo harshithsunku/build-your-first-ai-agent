@@ -1,0 +1,85 @@
+name: CI
+
+# Runs on every push and pull request. No API key required: this validates the
+# notebooks structurally (valid JSON, no committed outputs) and scans for secrets.
+# It deliberately does NOT execute the notebooks, since that would need a live
+# provider and credentials.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  validate-notebooks:
+    name: Validate notebooks & docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install validation tools
+        run: python -m pip install --upgrade pip nbformat
+
+      - name: Validate notebook JSON (nbformat)
+        run: |
+          python - <<'PY'
+          import glob, sys, nbformat
+          ok = True
+          for path in sorted(glob.glob("*.ipynb")):
+              try:
+                  nbformat.validate(nbformat.read(path, as_version=4))
+                  print(f"valid   {path}")
+              except Exception as e:
+                  ok = False
+                  print(f"INVALID {path}: {e}")
+          sys.exit(0 if ok else 1)
+          PY
+
+      - name: Check notebooks contain no committed outputs
+        run: |
+          python - <<'PY'
+          import glob, json, sys
+          bad = []
+          for path in sorted(glob.glob("*.ipynb")):
+              nb = json.load(open(path))
+              n = sum(
+                  len(c.get("outputs", [])) + (1 if c.get("execution_count") else 0)
+                  for c in nb["cells"]
+                  if c["cell_type"] == "code"
+              )
+              status = "clean" if n == 0 else f"HAS OUTPUT ({n})"
+              print(f"{status:16} {path}")
+              if n:
+                  bad.append(path)
+          if bad:
+              print("\nCommit notebooks with cleared outputs: Kernel > Restart & Clear Output")
+              sys.exit(1)
+          PY
+
+  secret-scan:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Ensure no real .env is tracked
+        run: |
+          if git ls-files --error-unmatch .env 2>/dev/null; then
+            echo "::error::.env must never be committed"; exit 1
+          fi
+          echo ".env is not tracked — good"
+
+      - name: Scan for obvious key patterns
+        run: |
+          # Scan only git-tracked files (.env is git-ignored and never present here).
+          # Flag long sk- style keys, but allow the documented placeholders.
+          if git ls-files -z | xargs -0 grep -InE 'sk-[A-Za-z0-9_-]{20,}' \
+              | grep -vE 'sk-your-key-here|sk-or-your-key-here|sk-\.\.\.'; then
+            echo "::error::Possible API key committed"; exit 1
+          fi
+          echo "No leaked keys found"

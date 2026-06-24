@@ -1,4 +1,6 @@
 <p align="center">
+<p align="center">
+  <a href="https://github.com/harshithsunku/build-your-first-ai-agent/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/harshithsunku/build-your-first-ai-agent/actions/workflows/ci.yml/badge.svg"/></a>
   <a href="#quick-start"><img alt="quick start" src="https://img.shields.io/badge/quick_start-60s-3fb950?style=flat-square"/></a>
   <img alt="license" src="https://img.shields.io/badge/license-MIT-blue?style=flat-square"/>
   <img alt="python" src="https://img.shields.io/badge/python-3.8%2B-58a6ff?style=flat-square"/>
@@ -55,6 +57,13 @@ UI twins are there when you want something clickable to demo.
 | `06_sql_data_agent.ipynb` | [`06_sql_data_agent_with_ui.ipynb`](06_sql_data_agent_with_ui.ipynb) |
 
 The UI twins add one dependency (`gradio`); run the last cell and a local web UI opens.
+
+<p align="center">
+  <img src="docs/ui-screenshot.svg" alt="A with-UI notebook: a Gradio app with a project-path field, a question box, a Run button, the agent's final answer, and a live agent-trace panel that shows the model requesting read-only tools and receiving their results." width="100%"/>
+</p>
+
+> The image above is an illustrative mockup of the `*_with_ui` layout — run a twin
+> notebook to get the real, interactive app.
 
 ---
 
@@ -114,20 +123,24 @@ jupyter lab                 # pick the "Python (Build Your First AI Agent)" kern
 
 ### Windows
 
-No virtualenv needed — with Python 3.8+ installed:
+With Python 3.8+ installed, a PowerShell helper does the same as the Linux script:
 
-```bat
+```powershell
 git clone https://github.com/harshithsunku/build-your-first-ai-agent.git
 cd build-your-first-ai-agent
 
-pip install -r requirements.txt
-copy .env.example .env       :: then edit .env with your provider + key
+.\setup.ps1                   # creates .venv, installs deps, registers a kernel, seeds .env
+.\.venv\Scripts\Activate.ps1  # activate the environment
 
-jupyter lab                  :: open notebook 01 and run top to bottom
+# edit .env with your provider + key, then:
+jupyter lab                   # pick the "Python (Build Your First AI Agent)" kernel
 ```
 
-> A venv is optional on Windows too; if you use one, `python -m ipykernel install --user
-> --name ai-agent` registers a kernel just like the Linux script does.
+> If script execution is blocked, run:
+> `powershell -ExecutionPolicy Bypass -File .\setup.ps1`
+
+Prefer no virtualenv? Just `pip install -r requirements.txt`, `copy .env.example .env`,
+then `jupyter lab`.
 
 Run the notebooks **in order** (01 → 06). Each is self-contained and re-explains what it
 needs, but the narrative builds on the previous one.
@@ -219,10 +232,13 @@ build-your-first-ai-agent/
 ├── 05_log_triage_agent.ipynb            # same loop + read-only log tools
 ├── 06_sql_data_agent.ipynb              # same loop + read-only SQL tools
 ├── *_with_ui.ipynb                      # the same six notebooks wrapped in a Gradio UI
-├── docs/agent-loop.svg                  # the agent-loop diagram used in this README
 ├── .env.example                         # provider config template (copy to .env)
 ├── requirements.txt                     # openai, httpx, python-dotenv, langchain*, gradio, jupyterlab, ipykernel
 ├── setup.sh                             # Linux/macOS: create .venv, install deps, register kernel
+├── setup.ps1                            # Windows: same, for PowerShell
+├── docs/agent-loop.svg                  # the agent-loop diagram used in this README
+├── docs/ui-screenshot.svg              # the with-UI mockup used in this README
+├── .github/                             # CI workflow + issue/PR templates
 ├── AGENTS.md                            # guidance for AI coding agents in this repo
 ├── CONTRIBUTING.md
 ├── CODE_OF_CONDUCT.md
