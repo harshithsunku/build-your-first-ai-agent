@@ -16,6 +16,7 @@ import os
 import re
 import shutil
 import subprocess
+import threading
 import time
 from pathlib import Path
 
@@ -54,6 +55,10 @@ UPDATE_DEBOUNCE_MAX_SECONDS = 300.0
 _default_root: str | None = None
 _last_update: dict[Path, float] = {}
 _update_cost: dict[Path, float] = {}
+# Background refresh bookkeeping, guarded by _refresh_lock.
+_refresh_lock = threading.Lock()
+_refresh_threads: dict[Path, threading.Thread] = {}
+_refresh_errors: dict[Path, str] = {}
 # Parser label forced by --label / GTAGS_MCP_LABEL; None = auto-detect.
 _forced_label: str | None = None
 _auto_label: str | None = None
@@ -128,8 +133,45 @@ def _run(args: list[str], cwd: Path, timeout: int = QUERY_TIMEOUT_SECONDS) -> tu
     return proc.stdout, proc.stderr, proc.returncode
 
 
+def _refresh_in_background(root: Path) -> None:
+    """Thread body: run `global -u` and record outcome under the lock."""
+    started = time.monotonic()
+    try:
+        _, stderr, code = _run(["global", "-u"], root, timeout=INDEX_TIMEOUT_SECONDS)
+        error = (
+            f"Warning: background index refresh failed (global -u exited {code}): "
+            f"{stderr.strip()}"
+            if code != 0
+            else None
+        )
+    except Exception as exc:  # noqa: BLE001 — must never kill the thread silently
+        error = f"Warning: background index refresh failed: {exc}"
+    with _refresh_lock:
+        _last_update[root] = time.monotonic()
+        _update_cost[root] = _last_update[root] - started
+        if error:
+            _refresh_errors[root] = error
+        _refresh_threads.pop(root, None)
+
+
+def _wait_for_refresh(root: Path, timeout: float = INDEX_TIMEOUT_SECONDS) -> None:
+    """Block until any in-flight background refresh for root has finished."""
+    with _refresh_lock:
+        thread = _refresh_threads.get(root)
+    if thread is not None:
+        thread.join(timeout)
+
+
 def _ensure_index(root: Path) -> str | None:
-    """Build the index if missing, else incrementally refresh it (debounced)."""
+    """Build the index if missing; else kick a non-blocking background refresh.
+
+    Queries are never blocked by refresh: they answer from the current index
+    while `global -u` catches up in a daemon thread. Staleness is bounded by
+    the adaptive debounce window plus the refresh duration; the update_index
+    tool is the synchronous barrier when guaranteed freshness is needed.
+    Returns an error string only for fatal conditions (failed full build);
+    a failed *background* refresh is surfaced as a warning on the next query.
+    """
     if not (root / "GTAGS").is_file():
         stdout, stderr, code = _run(["gtags"], root, timeout=INDEX_TIMEOUT_SECONDS)
         if code != 0:
@@ -139,20 +181,29 @@ def _ensure_index(root: Path) -> str | None:
             )
         _last_update[root] = time.monotonic()
         return None
-    now = time.monotonic()
-    window = min(
-        UPDATE_DEBOUNCE_MAX_SECONDS,
-        max(UPDATE_DEBOUNCE_SECONDS, 10.0 * _update_cost.get(root, 0.0)),
-    )
-    if now - _last_update.get(root, 0.0) < window:
-        return None
-    started = time.monotonic()
-    _, stderr, code = _run(["global", "-u"], root, timeout=INDEX_TIMEOUT_SECONDS)
-    if code != 0:
-        return f"Error: index refresh failed (global -u exited {code}): {stderr.strip()}"
-    _last_update[root] = time.monotonic()
-    _update_cost[root] = _last_update[root] - started
+
+    with _refresh_lock:
+        now = time.monotonic()
+        window = min(
+            UPDATE_DEBOUNCE_MAX_SECONDS,
+            max(UPDATE_DEBOUNCE_SECONDS, 10.0 * _update_cost.get(root, 0.0)),
+        )
+        refresh_due = now - _last_update.get(root, 0.0) >= window
+        if refresh_due and root not in _refresh_threads:
+            thread = threading.Thread(
+                target=_refresh_in_background, args=(root,), daemon=True
+            )
+            _refresh_threads[root] = thread
+            thread.start()
     return None
+
+
+def _pop_refresh_warning(root: Path | None) -> str | None:
+    """Consume a pending background-refresh failure warning for root, if any."""
+    if root is None:
+        return None
+    with _refresh_lock:
+        return _refresh_errors.pop(root, None)
 
 
 def _paginate(text: str, limit: int, offset: int) -> str:
@@ -203,12 +254,14 @@ def _query_global(
     offset: int = 0,
 ) -> str:
     """Shared plumbing for all read-only `global` queries."""
-    stdout, _, err = _raw_global(flags, project_root)
+    stdout, root, err = _raw_global(flags, project_root)
     if err:
         return err
+    warning = _pop_refresh_warning(root)
+    suffix = f"\n\n{warning}" if warning else ""
     if not stdout.strip():
-        return empty_message
-    return _paginate(stdout.rstrip(), limit, offset)
+        return empty_message + suffix
+    return _paginate(stdout.rstrip(), limit, offset) + suffix
 
 
 def _parse_cxref(line: str) -> tuple[str, int, str, str] | None:
@@ -1034,11 +1087,12 @@ def index_project(project_root: str | None = None) -> str:
 
 @mcp.tool()
 def update_index(project_root: str | None = None) -> str:
-    """Force an immediate incremental index refresh.
+    """Synchronously refresh the index — the guaranteed-freshness barrier.
 
-    Normally unnecessary — every query tool refreshes the index automatically
-    before running. Call this only to refresh eagerly, e.g. right after a
-    large batch of edits and before a burst of queries.
+    Query tools refresh the index automatically in the BACKGROUND, so their
+    results can lag very recent edits by a few seconds. Call this when you
+    just edited files and need the very next query to see the changes: it
+    blocks until the refresh is complete.
 
     Args:
         project_root: Project directory. Omit to use the server's default.
@@ -1050,11 +1104,15 @@ def update_index(project_root: str | None = None) -> str:
         return err
     if not (root / "GTAGS").is_file():
         return f"Error: no GTAGS index found in {root}. Run index_project first."
+    _wait_for_refresh(root)  # don't race an in-flight background refresh
+    started = time.monotonic()
     _, stderr, code = _run(["global", "-u"], root, timeout=INDEX_TIMEOUT_SECONDS)
     if code != 0:
         return f"Error: global -u exited with code {code}: {stderr.strip()}"
-    _last_update[root] = time.monotonic()
-    return f"Index updated for {root}."
+    with _refresh_lock:
+        _last_update[root] = time.monotonic()
+        _update_cost[root] = _last_update[root] - started
+    return f"Index updated for {root} (synchronous — results are now current)."
 
 
 def main() -> None:

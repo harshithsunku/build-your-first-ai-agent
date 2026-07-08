@@ -20,12 +20,21 @@ requires_pygments = pytest.mark.skipif(
 )
 
 
+def _drain_refresh_state():
+    for thread in list(server._refresh_threads.values()):
+        thread.join(timeout=30)
+    server._last_update.clear()
+    server._update_cost.clear()
+    server._refresh_errors.clear()
+    server._refresh_threads.clear()
+
+
 @pytest.fixture(autouse=True)
 def fresh_update_cache():
-    """Isolate the per-root update debounce between tests."""
-    server._last_update.clear()
+    """Isolate debounce/refresh state between tests."""
+    _drain_refresh_state()
     yield
-    server._last_update.clear()
+    _drain_refresh_state()
 
 
 @pytest.fixture
@@ -113,15 +122,85 @@ def test_default_root_is_cwd(c_project, monkeypatch):
 
 @requires_global
 def test_auto_update_picks_up_new_symbol(c_project):
-    """A new file is visible on the next query without any explicit update."""
+    """A new file becomes visible after the background refresh completes."""
     root = str(c_project)
     server.find_definition("add_numbers", root)  # builds index
 
     (c_project / "extra.c").write_text("int extra_fn(void) { return 42; }\n")
     server._last_update.clear()  # get past the debounce window
 
+    server.find_definition("extra_fn", root)  # kicks background refresh
+    server._wait_for_refresh(c_project.resolve())
+
     definition = server.find_definition("extra_fn", root)
     assert "extra.c" in definition
+
+
+@requires_global
+def test_query_never_blocks_on_refresh(c_project, monkeypatch):
+    """Queries answer immediately even while a slow refresh runs behind."""
+    import time as _time
+
+    root = str(c_project)
+    server.find_definition("add_numbers", root)  # builds index
+    server._last_update.clear()  # force a refresh on the next query
+
+    real_run = server._run
+
+    def slow_update_run(args, cwd, timeout=server.QUERY_TIMEOUT_SECONDS):
+        if args[:2] == ["global", "-u"]:
+            _time.sleep(1.0)
+        return real_run(args, cwd, timeout)
+
+    monkeypatch.setattr(server, "_run", slow_update_run)
+
+    t0 = _time.monotonic()
+    result = server.find_definition("add_numbers", root)
+    elapsed = _time.monotonic() - t0
+    assert "util.c" in result
+    assert elapsed < 0.5, f"query blocked on refresh ({elapsed:.2f}s)"
+    server._wait_for_refresh(c_project.resolve())
+
+
+@requires_global
+def test_update_index_is_synchronous_barrier(c_project):
+    root = str(c_project)
+    server.find_definition("add_numbers", root)  # builds index
+
+    (c_project / "fresh.c").write_text("int fresh_fn(void) { return 7; }\n")
+    result = server.update_index(root)
+    assert "synchronous" in result
+
+    definition = server.find_definition("fresh_fn", root)
+    assert "fresh.c" in definition
+
+
+@requires_global
+def test_background_refresh_error_surfaces(c_project, monkeypatch):
+    root = str(c_project)
+    server.find_definition("add_numbers", root)  # builds index
+    server._last_update.clear()  # force a refresh on the next query
+
+    real_run = server._run
+
+    def failing_update_run(args, cwd, timeout=server.QUERY_TIMEOUT_SECONDS):
+        if args[:2] == ["global", "-u"]:
+            # Sleep so the kicking query returns before the failure is
+            # recorded — the warning must surface on the NEXT query.
+            __import__("time").sleep(0.3)
+            return "", "simulated index corruption", 3
+        return real_run(args, cwd, timeout)
+
+    monkeypatch.setattr(server, "_run", failing_update_run)
+
+    server.find_definition("add_numbers", root)  # kicks failing refresh
+    server._wait_for_refresh(c_project.resolve())
+    monkeypatch.setattr(server, "_run", real_run)
+    server._last_update[c_project.resolve()] = __import__("time").monotonic()
+
+    result = server.find_definition("add_numbers", root)
+    assert "Warning: background index refresh failed" in result
+    assert "simulated index corruption" in result
 
 
 @requires_global

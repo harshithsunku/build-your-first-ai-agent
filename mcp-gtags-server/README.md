@@ -182,13 +182,13 @@ Force a specific parser label with `--label` or `GTAGS_MCP_LABEL` (e.g. `--label
 ```text
 agent question ──► MCP tool ──► GTAGS index (built once, ~66s for the kernel)
                                     │
-                     auto-refresh (global -u, debounced)
+                 background auto-refresh (global -u, adaptive debounce)
                                     │
                               narrow answer ──► agent context
 ```
 
-- **First query on a tree?** The index is built automatically.
-- **Files changed?** Every query runs a debounced incremental refresh first — results are never stale.
+- **First query on a tree?** The index is built automatically (the only operation that ever blocks — and only once).
+- **Files changed?** A debounced incremental refresh runs **in the background**: queries always answer instantly from the current index while `global -u` catches up behind the scenes. Measured on the kernel: queries return in 0.02s while the 25s freshness check runs invisibly. Staleness is bounded by the debounce window; call `update_index` for a synchronous, guaranteed-fresh barrier right after edits.
 - **Huge result?** Pagination footers tell the agent exactly how to fetch the next page — or the tool itself suggests a narrower one (`find_callers` on a symbol used in 500+ files points to `summarize_references`).
 
 ## ❓ FAQ
@@ -200,7 +200,7 @@ LSP servers give richer semantics but need a working build configuration, per-ed
 C, C++, Yacc, Java, PHP, and assembly natively — plus Python, Go, Rust, JS/TS, Ruby, and ~150 others via the ctags/Pygments plugin parsers (see [Multi-language projects](#-multi-language-projects-c--python--more)).
 
 **Does the agent have to manage the index?**
-No. That's the point. Build-on-first-query, refresh-before-every-query, debounced. The explicit `index_project`/`update_index` tools exist only as escape hatches.
+No. That's the point. Build-on-first-query, background refresh with adaptive debounce, zero blocking — queries never wait for index maintenance. The explicit `index_project`/`update_index` tools exist only as escape hatches (`update_index` doubles as a synchronous freshness barrier after edits).
 
 **Will it fight my agent's built-in tools?**
 The tool descriptions are written to steer the model: they say *when* to use indexed lookups instead of grep. In practice agents pick the faster, narrower tool naturally.
