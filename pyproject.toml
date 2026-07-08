@@ -1,0 +1,37 @@
+# Project metadata so `uv sync` (or any PEP 621 tool) can set this repo up in one step.
+# The classic pip flow via requirements.txt keeps working — keep both in sync.
+[project]
+name = "build-your-first-ai-agent"
+version = "1.0.0"
+description = "A hands-on, twelve-notebook walk-through that builds an AI agent from scratch: the agent loop, tools, RAG, MCP, structured outputs, memory, multi-agent orchestration, and evals/guardrails."
+readme = "README.md"
+license = { file = "LICENSE" }
+# mcp (notebook 08) needs Python 3.10+; everything else runs on 3.9.
+requires-python = ">=3.10"
+dependencies = [
+    # Core: notebooks 01, 02, 04, 05, 06 (raw OpenAI-compatible client)
+    "openai>=1.0",
+    # Custom HTTP client so VERIFY_SSL=false works behind TLS-intercepting firewalls
+    "httpx>=0.24",
+    # .env loading (every notebook; falls back to os.environ)
+    "python-dotenv>=1.0",
+    # Interactive browser UIs (the *_with_ui.ipynb notebooks)
+    "gradio>=4.0",
+    # Notebook 03 only (LangChain / LangGraph version of the same agent)
+    "langchain>=0.2",
+    "langgraph>=0.2",
+    "langchain-openai>=0.1",
+    # Notebook 07 only (RAG: cosine similarity over embedding vectors)
+    "numpy>=1.24",
+    # Notebook 08 only (MCP server + client)
+    "mcp>=1.0",
+    # Notebook 09 only (structured outputs: schema + validation)
+    "pydantic>=2.0",
+    # To run the notebooks
+    "jupyterlab>=4.0",
+    "ipykernel>=6.0",
+]
+
+[tool.uv]
+# This repo is notebooks, not an installable package — sync deps only, build nothing.
+package = false

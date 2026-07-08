@@ -23,14 +23,17 @@ Thanks for taking the time. This repo is a teaching resource, so the bar for cha
 git clone https://github.com/harshithsunku/build-your-first-ai-agent.git
 cd build-your-first-ai-agent
 
-pip install -r requirements.txt
+uv sync                     # or: pip install -r requirements.txt
 cp .env.example .env        # then edit with your provider + key
 
-jupyter lab
+uv run jupyter lab          # or plain: jupyter lab
 ```
 
-Notebook 01 runs on any model. Notebooks 02–06 need a **tool-capable** model
-(`gpt-4o-mini`, `qwen2.5`, `llama3.1`, …).
+If you add or bump a dependency, change it in **both** `pyproject.toml` and
+`requirements.txt`, and refresh the lockfile with `uv lock`.
+
+Notebook 01 runs on any model. Notebooks 02–08 and 10–12 need a **tool-capable** model
+(`gpt-4o-mini`, `qwen2.5`, `llama3.1`, …); notebook 07 also needs an embeddings endpoint.
 
 ## Testing your change
 
