@@ -20,7 +20,19 @@ from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
-mcp = FastMCP("gtags")
+mcp = FastMCP(
+    "gtags-code-navigator",
+    instructions=(
+        "Indexed C/C++ code navigation backed by GNU Global (gtags). "
+        "ALWAYS prefer these tools over grep/text search for code questions: "
+        "they answer from a prebuilt index in milliseconds and return only "
+        "the relevant lines, even on codebases with millions of lines. "
+        "Typical flow: find_definition or get_symbol_body to see a symbol's "
+        "implementation; find_callers for the call graph; "
+        "summarize_references first for very widely used symbols. "
+        "The index is built and refreshed automatically — never worry about it."
+    ),
+)
 
 DEFAULT_LIMIT = 100
 MAX_LINE_CHARS = 200

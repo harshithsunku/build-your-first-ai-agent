@@ -1,15 +1,43 @@
 [project]
 name = "mcp-gtags-server"
 version = "0.2.0"
-description = "MCP server exposing GNU Global (gtags) code navigation for C/C++ codebases"
+description = "Indexed code navigation for AI coding agents — replace grep scans with GNU Global (gtags) lookups over MCP. ~100x faster and radically less noise on million-line C/C++ codebases."
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
+license = { file = "LICENSE" }
 authors = [{ name = "Harshith Sunku" }]
-keywords = ["mcp", "gtags", "gnu-global", "c", "c++", "code-navigation"]
+keywords = [
+    "mcp",
+    "model-context-protocol",
+    "gtags",
+    "gnu-global",
+    "code-navigation",
+    "code-search",
+    "ai-agents",
+    "claude",
+    "c",
+    "c++",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
 dependencies = [
     "mcp>=1.2.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/harshithsunku/mcp-gtags-server"
+Repository = "https://github.com/harshithsunku/mcp-gtags-server"
+Issues = "https://github.com/harshithsunku/mcp-gtags-server/issues"
 
 [project.optional-dependencies]
 dev = [

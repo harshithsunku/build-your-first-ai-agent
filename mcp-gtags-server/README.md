@@ -1,94 +1,65 @@
-# mcp-gtags-server
+# ⚡ mcp-gtags-server
 
-**A drop-in replacement for grep-based code search in AI coding agents**, built on [GNU Global (gtags)](https://www.gnu.org/software/global/) and exposed over [MCP](https://modelcontextprotocol.io/).
+> **Stop letting your AI agent grep. Give it an index.**
 
-When an AI agent (Claude Code, Cursor, Codex, ...) needs to answer "where is this function defined?" or "who calls this?", it typically greps the tree — a full scan on every question. On large C/C++ codebases that's slow, and worse, it floods the model's context with every textual occurrence: comments, strings, unrelated matches. This server replaces those scans with indexed lookups that return a **narrow, precise** set of lines.
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![MCP](https://img.shields.io/badge/protocol-MCP-8A2BE2)](https://modelcontextprotocol.io/)
+[![Powered by GNU Global](https://img.shields.io/badge/powered%20by-GNU%20Global-orange)](https://www.gnu.org/software/global/)
 
-The server manages the index entirely by itself: the first query builds it, and every query incrementally refreshes it. The agent never has to think about indexing.
+Every AI coding agent — Claude Code, Cursor, Codex, you name it — answers *"where is this function defined?"* the same way: **grep the entire tree**. On a million-line C/C++ codebase that's a full scan per question, and the output is a firehose: every comment, string literal, and unrelated match, dumped straight into the model's context window.
 
-## Why not just grep?
+**mcp-gtags-server** replaces those scans with indexed lookups powered by [GNU Global (gtags)](https://www.gnu.org/software/global/) — the same tags engine kernel and systems developers have trusted for decades — exposed to agents over the [Model Context Protocol](https://modelcontextprotocol.io/).
 
-Measured on a Linux kernel checkout (65,163 C/C++ files, 37.1M lines), warm page cache:
+- 🚀 **~100× faster per query** — milliseconds instead of seconds, at any codebase size
+- 🎯 **Radically less noise** — the definition, not 7,873 lines of matches
+- 🧠 **Zero index management** — first query builds the index, every query auto-refreshes it
+- 🔌 **Works everywhere MCP does** — Claude Code, Claude Desktop, Cursor, any MCP client
 
-| Query | grep -rn (scan) | global (indexed) | Output lines: grep vs global |
+## 📊 The numbers (real Linux kernel, not a toy)
+
+Measured on a full Linux kernel checkout — **65,163 C/C++ files, 37.1 million lines** — warm page cache:
+
+| Question an agent asks | `grep -rn` | gtags (this server) | Context consumed |
 |---|---|---|---|
-| `tcp_v4_rcv` definition | 1.40 s | **0.01 s** | 8 vs **1** |
-| `kmalloc` definition | 1.62 s | **0.01 s** | 7,873 vs **5** |
-| `kmalloc` references | 1.62 s | **0.10 s** | 7,873 vs 2,744 (real call sites only) |
-| `ext4_readdir` definition | 1.48 s | **0.01 s** | 2 vs **1** |
+| Where is `tcp_v4_rcv` defined? | 1.40 s | **0.01 s** | 8 lines → **1 line** |
+| Where is `kmalloc` defined? | 1.62 s | **0.01 s** | 7,873 lines → **5 lines** |
+| Who references `kmalloc`? | 1.62 s | **0.10 s** | 7,873 noisy lines → 2,744 real sites (or a **ranked per-file summary**) |
+| Show me `tcp_v4_rcv`'s implementation | *read a 3,500-line file* | **`get_symbol_body`** | **exactly the 271-line function** |
+| Who calls `ext4_mark_inode_dirty`? | 245 raw match lines | **`find_callers`** | **62 deduped caller functions, with counts** |
 
-One-time index build: 66.5 s for the whole kernel; after that, incremental updates take well under a second. The speedup per query is ~100×, but the bigger win for an agent is **precision**: a definition lookup returns the definition, not 7,873 lines of noise eating the context window.
-
-Reproduce with [`scripts/benchmark.sh`](scripts/benchmark.sh):
+One-time index build: **66 s** for the whole kernel. Incremental refresh after edits: well under a second. Reproduce it yourself with [`scripts/benchmark.sh`](scripts/benchmark.sh):
 
 ```bash
 ./scripts/benchmark.sh /path/to/linux tcp_v4_rcv kmalloc ext4_readdir
 ```
 
-## Tools
+The speed is nice. The real win is **precision**: an agent that gets 5 exact lines instead of 7,873 noisy ones keeps its context window for actual reasoning.
 
-All query tools take optional `limit` (default 100) and `offset` parameters for pagination, and `project_root` may be omitted (defaults to the server's working directory, or `--root` / `GTAGS_MCP_ROOT` if configured). Indexing happens automatically on first use.
+## 🚀 Quick start (60 seconds)
 
-### Symbol-level tools (the noise killers)
-
-These follow the pattern proven out by semantic-code MCP servers like [Serena](https://github.com/oraios/serena): give the agent the *symbol*, not the file.
-
-| Tool | What it does |
-|---|---|
-| `get_symbol_body` | Return **just the source of a definition** — the agent sees the 271-line `tcp_v4_rcv` function, not the 3,500-line file around it |
-| `find_callers` | Map every reference to its **enclosing function**, deduplicated with call counts — 245 raw match lines for `ext4_mark_inode_dirty` collapse to 62 caller functions |
-| `summarize_references` | **Per-file reference counts**, sorted — the cheap first move for symbols with thousands of uses (`kmalloc`: 2,744 references → a ranked file list) |
-
-### Core lookup tools
-
-| Tool | What it does | Underlying command |
-|---|---|---|
-| `find_definition` | Where is this symbol defined? (`case_insensitive` opt.) | `global -x` |
-| `find_references` | Raw reference lines for a symbol (`case_insensitive` opt.) | `global -rx` |
-| `find_symbol_usages` | Usages of symbols with no in-tree definition (e.g. libc calls) | `global -sx` |
-| `grep_project` | Regex search across indexed files (`case_insensitive` opt.) | `global -gx` |
-| `list_file_symbols` | All symbols defined in one file (a file's API surface) | `global -fx` |
-| `complete_symbol` | Symbols starting with a prefix | `global -c` |
-| `find_files` | Indexed files whose path matches a regex | `global -P` |
-| `index_project` | Force a full index rebuild (rarely needed) | `gtags` |
-| `update_index` | Force an incremental refresh (rarely needed) | `global -u` |
-
-### A typical agent flow on a huge tree
-
-1. `summarize_references("kmalloc")` → see where usage concentrates (1 line per file)
-2. `find_callers("ext4_mark_inode_dirty")` → the actual call graph, one line per caller
-3. `get_symbol_body("tcp_v4_rcv")` → read the one function that matters
-
-Total context consumed: a few hundred lines — versus tens of thousands for the grep-and-read-files equivalent.
-
-## Prerequisites
-
-- Python 3.10+
-- GNU Global on PATH:
-  - Debian/Ubuntu: `sudo apt install global`
-  - Fedora: `sudo dnf install global`
-  - macOS: `brew install global`
-
-## Installation
+**1. Install GNU Global** (the `gtags`/`global` binaries):
 
 ```bash
-# with uv (recommended)
-uv tool install mcp-gtags-server
-
-# or from a local checkout
-uv pip install -e .
-# or: pip install -e .
+sudo apt install global      # Debian/Ubuntu
+sudo dnf install global      # Fedora
+brew install global          # macOS
 ```
 
-This installs the `gtags-mcp` command, which speaks MCP over stdio.
-
-## Using with Claude Code
+**2. Install the server:**
 
 ```bash
+uv tool install mcp-gtags-server        # or: pip install mcp-gtags-server
+```
+
+**3. Hook it up to your agent:**
+
+```bash
+# Claude Code — one command:
 claude mcp add gtags -- gtags-mcp
 ```
 
-Or in your project's `.mcp.json` (the server inherits the project directory as its default root):
+Or in your project's `.mcp.json` (Claude Code, Cursor, and most MCP clients):
 
 ```json
 {
@@ -100,22 +71,12 @@ Or in your project's `.mcp.json` (the server inherits the project directory as i
 }
 ```
 
-To pin a specific tree regardless of where the server is launched:
+That's it. No indexing step, no configuration. Ask your agent *"who calls `tcp_v4_rcv`?"* — the first query builds the index automatically, and every query after that is answered in milliseconds.
 
-```json
-{
-  "mcpServers": {
-    "gtags": {
-      "command": "gtags-mcp",
-      "args": ["--root", "/home/me/src/linux"]
-    }
-  }
-}
-```
+<details>
+<summary><b>Claude Desktop</b> config</summary>
 
-## Using with Claude Desktop
-
-Add to `claude_desktop_config.json`:
+Add to `claude_desktop_config.json` (pin the project since Desktop doesn't launch in your repo):
 
 ```json
 {
@@ -128,35 +89,101 @@ Add to `claude_desktop_config.json`:
 }
 ```
 
-## Example session
+</details>
 
-Once connected, ask the assistant things like:
+<details>
+<summary><b>Pin a project root</b> explicitly</summary>
 
-> "Where is `tcp_v4_rcv` defined and who calls it?"
+The default project root is the server's working directory. Override with `--root /path` or the `GTAGS_MCP_ROOT` env var — or pass `project_root` on any individual tool call to query a different tree.
 
-The first query auto-builds the index; every question after that is answered in milliseconds from the index — no grep scans, no context-window flooding.
+</details>
 
-## Development
+## 🧰 The tools
 
-```bash
-uv pip install -e ".[dev]"
-pytest
+### Symbol-level tools — the noise killers
+
+The pattern proven out by semantic-code servers like [Serena](https://github.com/oraios/serena): **give the agent the symbol, not the file.**
+
+| Tool | What the agent gets |
+|---|---|
+| `get_symbol_body` | **Just the source of a definition.** The 271-line `tcp_v4_rcv` function — not the 3,500-line file it lives in. Handles functions, structs, and multi-line macros. |
+| `find_callers` | **The call graph, deduplicated.** Every reference mapped to its enclosing function with call counts: 245 raw lines for `ext4_mark_inode_dirty` collapse to 62 callers. |
+| `summarize_references` | **A ranked per-file count.** The cheap first move for hot symbols — `kmalloc`'s 2,744 references become one screen of "where usage concentrates". |
+
+### Core lookups
+
+| Tool | What it does | Underlying command |
+|---|---|---|
+| `find_definition` | Where is this symbol defined? | `global -x` |
+| `find_references` | Raw reference lines for a symbol | `global -rx` |
+| `find_symbol_usages` | Usages of symbols with no in-tree definition (libc calls etc.) | `global -sx` |
+| `grep_project` | Regex search across indexed files | `global -gx` |
+| `list_file_symbols` | A file's API surface — every symbol it defines | `global -fx` |
+| `complete_symbol` | Symbols starting with a prefix | `global -c` |
+| `find_files` | Indexed files whose path matches a regex | `global -P` |
+| `index_project` / `update_index` | Force rebuild / refresh (rarely needed — it's automatic) | `gtags` / `global -u` |
+
+Every query tool supports `limit`/`offset` pagination with a continuation footer, long-line truncation, and (where it makes sense) `case_insensitive` — output is *engineered* to never flood a context window.
+
+### The flow that saves your context window
+
+```text
+1. summarize_references("kmalloc")          → where does usage concentrate? (1 line/file)
+2. find_callers("ext4_mark_inode_dirty")    → the actual call graph (1 line/caller)
+3. get_symbol_body("tcp_v4_rcv")            → read the ONE function that matters
 ```
 
-Tests build a tiny C project in a temp directory and exercise auto-indexing, auto-refresh, pagination, and the full query flow (skipped automatically if GNU Global isn't installed).
+A few hundred lines of context total — versus tens of thousands for the grep-and-read-files equivalent.
 
-Poke at the server interactively with the MCP Inspector:
+## ⚙️ How it works
 
-```bash
-npx @modelcontextprotocol/inspector gtags-mcp
+```text
+agent question ──► MCP tool ──► GTAGS index (built once, ~66s for the kernel)
+                                    │
+                     auto-refresh (global -u, debounced)
+                                    │
+                              narrow answer ──► agent context
 ```
 
-## Future work
+- **First query on a tree?** The index is built automatically.
+- **Files changed?** Every query runs a debounced incremental refresh first — results are never stale.
+- **Huge result?** Pagination footers tell the agent exactly how to fetch the next page — or the tool itself suggests a narrower one (`find_callers` on a symbol used in 500+ files points to `summarize_references`).
 
-- Languages beyond gtags' native set (C, C++, Yacc, Java, PHP, assembly) via the Pygments/ctags plugin parsers.
-- Structured (JSON) result variants for clients that want machine-readable output.
-- Multi-level call hierarchy (`find_callers` with `depth > 1`) for transitive impact analysis.
+## ❓ FAQ
 
-## License
+**Why gtags instead of a language server (LSP)?**
+LSP servers give richer semantics but need a working build configuration, per-editor setup, and serious warm-up time on large trees. gtags indexes 37M lines in about a minute with *zero* configuration, handles the kernel-scale codebases LSPs choke on, and its fuzzy parser doesn't care whether the code currently compiles. For C/C++ navigation questions — definition, references, callers — it's the pragmatic sweet spot.
 
-MIT
+**What languages?**
+C, C++, Yacc, Java, PHP, and assembly natively. Dozens more via GNU Global's Pygments/ctags plugin parsers (on the roadmap).
+
+**Does the agent have to manage the index?**
+No. That's the point. Build-on-first-query, refresh-before-every-query, debounced. The explicit `index_project`/`update_index` tools exist only as escape hatches.
+
+**Will it fight my agent's built-in tools?**
+The tool descriptions are written to steer the model: they say *when* to use indexed lookups instead of grep. In practice agents pick the faster, narrower tool naturally.
+
+## 🛠️ Development
+
+```bash
+git clone https://github.com/harshithsunku/mcp-gtags-server
+cd mcp-gtags-server
+uv venv && uv pip install -e ".[dev]"
+pytest                        # 14 tests; auto-skip if GNU Global is absent
+npx @modelcontextprotocol/inspector gtags-mcp    # poke at it interactively
+```
+
+Tests build a real C project in a temp dir and exercise auto-indexing, auto-refresh, caller mapping, body extraction, and pagination end-to-end.
+
+## 🗺️ Roadmap
+
+- [ ] More languages via Pygments/ctags plugin parsers
+- [ ] Multi-level call hierarchy (`find_callers` with `depth > 1`) for transitive impact analysis
+- [ ] Structured (JSON) result variants for machine-readable output
+- [ ] Published benchmarks vs LSP-based MCP servers
+
+Contributions welcome — open an issue or PR.
+
+## 📄 License
+
+[MIT](LICENSE) © Harshith Sunku
