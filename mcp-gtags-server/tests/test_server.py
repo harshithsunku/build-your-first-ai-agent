@@ -12,6 +12,13 @@ requires_global = pytest.mark.skipif(
     reason="GNU Global not installed",
 )
 
+requires_pygments = pytest.mark.skipif(
+    shutil.which("global") is None
+    or shutil.which("gtags") is None
+    or not server._plugin_deps_available(),
+    reason="ctags + Pygments plugin parser not available",
+)
+
 
 @pytest.fixture(autouse=True)
 def fresh_update_cache():
@@ -278,6 +285,78 @@ def test_find_dead_symbols(c_project):
 def test_find_includers(c_project):
     result = server.find_includers("util.h", str(c_project))
     assert "main.c" in result and "util.c" in result
+
+
+@pytest.fixture
+def mixed_project(c_project):
+    (c_project / "pylib.py").write_text(
+        textwrap.dedent(
+            """\
+            def py_util(a, b):
+                total = a + b
+                return total
+
+
+            def unrelated():
+                return 42
+            """
+        )
+    )
+    (c_project / "app.py").write_text(
+        textwrap.dedent(
+            """\
+            from pylib import py_util
+
+
+            def run_app():
+                return py_util(2, 3)
+            """
+        )
+    )
+    return c_project
+
+
+@requires_pygments
+def test_mixed_project_python_definition(mixed_project):
+    root = str(mixed_project)
+    result = server.find_definition("py_util", root)
+    assert "pylib.py" in result
+
+
+@requires_pygments
+def test_mixed_project_python_references(mixed_project):
+    root = str(mixed_project)
+    result = server.find_references("py_util", root)
+    assert "app.py" in result
+
+
+@requires_pygments
+def test_mixed_project_c_still_works(mixed_project):
+    root = str(mixed_project)
+    result = server.find_definition("add_numbers", root)
+    assert "util.c" in result
+
+
+@requires_pygments
+def test_python_body_extraction(mixed_project):
+    root = str(mixed_project)
+    body = server.get_symbol_body("py_util", root)
+    assert "def py_util(a, b):" in body
+    assert "return total" in body
+    assert "unrelated" not in body  # indentation-delimited: next def excluded
+
+
+@requires_pygments
+def test_python_callees(mixed_project):
+    root = str(mixed_project)
+    result = server.find_callees("run_app", root)
+    assert "py_util  pylib.py:1" in result
+
+
+@requires_pygments
+def test_index_reports_multilanguage_label(mixed_project):
+    result = server.index_project(str(mixed_project))
+    assert "native-pygments" in result
 
 
 def test_bad_project_root():

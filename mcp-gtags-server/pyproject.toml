@@ -1,6 +1,6 @@
 [project]
 name = "mcp-gtags-server"
-version = "0.3.0"
+version = "0.4.0"
 description = "Indexed code navigation for AI coding agents — replace grep scans with GNU Global (gtags) lookups over MCP. ~100x faster and radically less noise on million-line C/C++ codebases."
 readme = "README.md"
 requires-python = ">=3.10"

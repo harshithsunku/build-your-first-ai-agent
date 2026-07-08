@@ -43,12 +43,54 @@ MAX_BODY_LINES = 300
 QUERY_TIMEOUT_SECONDS = 120
 INDEX_TIMEOUT_SECONDS = 600
 # Skip the incremental freshness check when the same root was updated this
-# recently — agent turns often fire many queries back to back.
+# recently — agent turns often fire many queries back to back. The window is
+# adaptive: at least this many seconds, and at least 10x the measured cost of
+# the last update (capped below), so a tree where the up-to-date check itself
+# takes tens of seconds doesn't re-pay it on every burst of queries.
 UPDATE_DEBOUNCE_SECONDS = 5.0
+UPDATE_DEBOUNCE_MAX_SECONDS = 300.0
 
 # Default root set by --root / GTAGS_MCP_ROOT; falls back to the server cwd.
 _default_root: str | None = None
 _last_update: dict[Path, float] = {}
+_update_cost: dict[Path, float] = {}
+# Parser label forced by --label / GTAGS_MCP_LABEL; None = auto-detect.
+_forced_label: str | None = None
+_auto_label: str | None = None
+_auto_label_resolved = False
+
+# File extensions GNU Global's built-in parser understands.
+_NATIVE_EXTENSIONS = frozenset(
+    ".c .h .cc .cpp .cxx .hh .hpp .hxx .java .php .php3 .phtml .y .s .S .asm".split()
+)
+
+
+def _plugin_deps_available() -> bool:
+    """True when the ctags + Pygments plugin-parser dependencies are usable."""
+    if not any(
+        shutil.which(name) for name in ("ctags-exuberant", "universal-ctags", "ctags")
+    ):
+        return False
+    try:
+        probe = subprocess.run(
+            ["python3", "-c", "import pygments"],
+            capture_output=True,
+            timeout=15,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return probe.returncode == 0
+
+
+def _gtags_label() -> str | None:
+    """Resolve the GTAGSLABEL to use: forced label > auto-detected > native default."""
+    global _auto_label, _auto_label_resolved
+    if _forced_label:
+        return _forced_label
+    if not _auto_label_resolved:
+        _auto_label = "native-pygments" if _plugin_deps_available() else None
+        _auto_label_resolved = True
+    return _auto_label
 
 
 def _check_global_installed() -> str | None:
@@ -71,12 +113,17 @@ def _effective_root(project_root: str | None) -> tuple[Path | None, str | None]:
 
 def _run(args: list[str], cwd: Path, timeout: int = QUERY_TIMEOUT_SECONDS) -> tuple[str, str, int]:
     """Run a command and return (stdout, stderr, returncode)."""
+    env = os.environ.copy()
+    label = _gtags_label()
+    if label:
+        env["GTAGSLABEL"] = label
     proc = subprocess.run(
         args,
         cwd=cwd,
         capture_output=True,
         text=True,
         timeout=timeout,
+        env=env,
     )
     return proc.stdout, proc.stderr, proc.returncode
 
@@ -93,12 +140,18 @@ def _ensure_index(root: Path) -> str | None:
         _last_update[root] = time.monotonic()
         return None
     now = time.monotonic()
-    if now - _last_update.get(root, 0.0) < UPDATE_DEBOUNCE_SECONDS:
+    window = min(
+        UPDATE_DEBOUNCE_MAX_SECONDS,
+        max(UPDATE_DEBOUNCE_SECONDS, 10.0 * _update_cost.get(root, 0.0)),
+    )
+    if now - _last_update.get(root, 0.0) < window:
         return None
+    started = time.monotonic()
     _, stderr, code = _run(["global", "-u"], root, timeout=INDEX_TIMEOUT_SECONDS)
     if code != 0:
         return f"Error: index refresh failed (global -u exited {code}): {stderr.strip()}"
     _last_update[root] = time.monotonic()
+    _update_cost[root] = _last_update[root] - started
     return None
 
 
@@ -168,18 +221,45 @@ def _parse_cxref(line: str) -> tuple[str, int, str, str] | None:
     return symbol, lineno, path, source
 
 
-def _extract_body(file: Path, start_line: int) -> list[str]:
-    """Extract a C/C++ definition body starting at start_line (1-based).
+def _extract_python_body(lines: list[str], i: int) -> list[str]:
+    """Extract an indentation-delimited Python def/class body starting at lines[i]."""
+    out = [lines[i]]
+    base_indent = len(lines[i]) - len(lines[i].lstrip())
+    pending_blanks: list[str] = []
+    j = i + 1
+    while j < len(lines) and len(out) < MAX_BODY_LINES:
+        line = lines[j]
+        if not line.strip():
+            pending_blanks.append(line)
+            j += 1
+            continue
+        indent = len(line) - len(line.lstrip())
+        if indent <= base_indent:
+            break
+        out.extend(pending_blanks)
+        pending_blanks = []
+        out.append(line)
+        j += 1
+    if len(out) >= MAX_BODY_LINES:
+        out.append(f"... body truncated at {MAX_BODY_LINES} lines ...")
+    return out
 
-    Brace-counting heuristic: read until the block opened by the first `{`
-    closes. Prototypes, typedefs, and macros without a block end at the first
-    line not continued by a backslash that ends in `;` (or after a short
-    window if no block ever opens).
+
+def _extract_body(file: Path, start_line: int) -> list[str]:
+    """Extract a definition body starting at start_line (1-based).
+
+    C-family files use a brace-counting heuristic: read until the block
+    opened by the first `{` closes; prototypes, typedefs, and macros without
+    a block end at the first line not continued by a backslash that ends in
+    `;` (or after a short window if no block ever opens). Python files use
+    indentation instead.
     """
     lines = file.read_text(errors="replace").splitlines()
     i = start_line - 1
     if i < 0 or i >= len(lines):
         return []
+    if file.suffix in (".py", ".pyi"):
+        return _extract_python_body(lines, i)
     out: list[str] = []
     depth = 0
     seen_brace = False
@@ -254,11 +334,13 @@ def _callers_of(
     return callers, None
 
 
-# Identifiers that look like calls in C source but never are.
-_C_NON_CALLS = frozenset(
+# Identifiers that look like calls in C or Python source but never are.
+_NON_CALLS = frozenset(
     "if else for while do switch return sizeof defined typeof alignof offsetof "
     "case goto break continue struct union enum static const volatile inline "
-    "unsigned signed int char long short float double void".split()
+    "unsigned signed int char long short float double void "
+    "def class lambda elif except raise yield assert del pass with not and or "
+    "in is print len range super self str list dict set tuple type isinstance".split()
 )
 
 
@@ -556,7 +638,7 @@ def find_callees(
     seen: set[str] = set()
     candidates: list[str] = []
     for name in re.findall(r"\b([A-Za-z_]\w*)\s*\(", body):
-        if name != symbol and name not in _C_NON_CALLS and name not in seen:
+        if name != symbol and name not in _NON_CALLS and name not in seen:
             seen.add(name)
             candidates.append(name)
     if not candidates:
@@ -924,7 +1006,30 @@ def index_project(project_root: str | None = None) -> str:
     if code != 0:
         return f"Error: gtags exited with code {code}: {stderr.strip() or stdout.strip()}"
     _last_update[root] = time.monotonic()
-    return f"Indexed {root} (GTAGS, GRTAGS, GPATH created)."
+    label = _gtags_label()
+    if label:
+        return (
+            f"Indexed {root} (GTAGS, GRTAGS, GPATH created) "
+            f"using parser label '{label}' (multi-language)."
+        )
+    message = f"Indexed {root} (GTAGS, GRTAGS, GPATH created) using the native parser."
+    non_native = set()
+    try:
+        from itertools import islice
+
+        for entry in islice(root.rglob("*"), 20000):
+            suffix = entry.suffix
+            if suffix in (".py", ".go", ".rs", ".js", ".ts", ".rb") and entry.is_file():
+                non_native.add(suffix)
+    except OSError:
+        pass
+    if non_native:
+        message += (
+            f" Note: {', '.join(sorted(non_native))} files were NOT indexed — "
+            "install ctags + Pygments (e.g. `apt install exuberant-ctags "
+            "python3-pygments`) to enable multi-language indexing."
+        )
+    return message
 
 
 @mcp.tool()
@@ -954,7 +1059,7 @@ def update_index(project_root: str | None = None) -> str:
 
 def main() -> None:
     """Entry point: run the MCP server over stdio."""
-    global _default_root
+    global _default_root, _forced_label
     parser = argparse.ArgumentParser(
         prog="gtags-mcp",
         description="MCP server exposing GNU Global (gtags) code navigation over stdio.",
@@ -965,8 +1070,17 @@ def main() -> None:
         help="Default project root for all tools (overrides GTAGS_MCP_ROOT; "
         "falls back to the current working directory).",
     )
+    parser.add_argument(
+        "--label",
+        default=os.environ.get("GTAGS_MCP_LABEL"),
+        help="GTAGSLABEL parser label to force (e.g. 'native-pygments', "
+        "'pygments', 'default'). By default the server auto-selects "
+        "'native-pygments' when ctags and Pygments are installed, enabling "
+        "multi-language indexing.",
+    )
     args = parser.parse_args()
     _default_root = args.root
+    _forced_label = args.label
     mcp.run()
 
 

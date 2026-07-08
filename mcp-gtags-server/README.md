@@ -156,6 +156,27 @@ Every query tool supports `limit`/`offset` pagination with a continuation footer
 
 A few hundred lines of context total — versus tens of thousands for the grep-and-read-files equivalent.
 
+## 🌍 Multi-language projects (C + Python + more)
+
+Real projects mix languages — a C core with Python tooling, JS frontends, Go services. The server handles this automatically:
+
+- **Native languages** (C, C++, Java, PHP, Yacc, assembly) use GNU Global's fast built-in parser.
+- **Everything else** (Python, Go, Rust, JavaScript, TypeScript, Ruby, ... ~150 languages) is indexed through Global's **ctags + Pygments plugin parsers** — same index, same tools, same queries.
+
+Enable it by installing two extra packages; the server detects them and switches to the `native-pygments` parser label on its own:
+
+```bash
+sudo apt install exuberant-ctags python3-pygments   # Debian/Ubuntu
+sudo dnf install ctags python3-pygments             # Fedora
+brew install ctags && pip install pygments          # macOS
+```
+
+Now `find_definition("py_util")`, `get_symbol_body` (indentation-aware for Python), `find_callees`, `call_hierarchy` — all work across every language in the tree, in one index.
+
+Force a specific parser label with `--label` or `GTAGS_MCP_LABEL` (e.g. `--label default` for native-only, `--label pygments` for plugin-everything).
+
+**Honest caveats:** for plugin-parsed languages, *definitions* are as accurate as ctags, but *references* are token-based — every occurrence of the name counts, without C-grade semantic reference tracking or local-scope awareness. For C/C++ nothing changes: the native parser still does that part.
+
 ## ⚙️ How it works
 
 ```text
@@ -176,7 +197,7 @@ agent question ──► MCP tool ──► GTAGS index (built once, ~66s for th
 LSP servers give richer semantics but need a working build configuration, per-editor setup, and serious warm-up time on large trees. gtags indexes 37M lines in about a minute with *zero* configuration, handles the kernel-scale codebases LSPs choke on, and its fuzzy parser doesn't care whether the code currently compiles. For C/C++ navigation questions — definition, references, callers — it's the pragmatic sweet spot.
 
 **What languages?**
-C, C++, Yacc, Java, PHP, and assembly natively. Dozens more via GNU Global's Pygments/ctags plugin parsers (on the roadmap).
+C, C++, Yacc, Java, PHP, and assembly natively — plus Python, Go, Rust, JS/TS, Ruby, and ~150 others via the ctags/Pygments plugin parsers (see [Multi-language projects](#-multi-language-projects-c--python--more)).
 
 **Does the agent have to manage the index?**
 No. That's the point. Build-on-first-query, refresh-before-every-query, debounced. The explicit `index_project`/`update_index` tools exist only as escape hatches.
@@ -201,7 +222,7 @@ Tests build a real C project in a temp dir and exercise auto-indexing, auto-refr
 - [x] Multi-level call hierarchy (`call_hierarchy`, depth 1–5) for transitive impact analysis
 - [x] Outgoing call graph (`find_callees`), symbol overview cards (`symbol_info`), project orientation (`project_overview`)
 - [x] Dead-code candidates (`find_dead_symbols`) and header blast radius (`find_includers`)
-- [ ] More languages via Pygments/ctags plugin parsers
+- [x] Multi-language projects (Python, Go, Rust, JS, ... via ctags/Pygments plugin parsers, auto-detected)
 - [ ] Structured (JSON) result variants for machine-readable output
 - [ ] Published benchmarks vs LSP-based MCP servers
 
