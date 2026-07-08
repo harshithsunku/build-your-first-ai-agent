@@ -3,18 +3,20 @@
   <a href="https://github.com/harshithsunku/build-your-first-ai-agent/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/harshithsunku/build-your-first-ai-agent/actions/workflows/ci.yml/badge.svg"/></a>
   <a href="#quick-start"><img alt="quick start" src="https://img.shields.io/badge/quick_start-60s-3fb950?style=flat-square"/></a>
   <img alt="license" src="https://img.shields.io/badge/license-MIT-blue?style=flat-square"/>
-  <img alt="python" src="https://img.shields.io/badge/python-3.8%2B-58a6ff?style=flat-square"/>
-  <img alt="notebooks" src="https://img.shields.io/badge/notebooks-6-c084fc?style=flat-square"/>
+  <img alt="python" src="https://img.shields.io/badge/python-3.10%2B-58a6ff?style=flat-square"/>
+  <img alt="uv" src="https://img.shields.io/badge/uv-compatible-de5fe9?style=flat-square"/>
+  <img alt="notebooks" src="https://img.shields.io/badge/notebooks-12-c084fc?style=flat-square"/>
   <img alt="provider" src="https://img.shields.io/badge/provider-any_OpenAI--compatible-d29922?style=flat-square"/>
   <img alt="deps" src="https://img.shields.io/badge/core-openai_only-f85149?style=flat-square"/>
 </p>
 
 # Build Your First AI Agent
 
-A hands-on, six-notebook walk-through that builds an AI agent **from scratch** — starting
-with a single chat completion and ending with tool-using agents that explore a codebase,
-triage logs, and query a database. Each notebook maps to one layer of the "agent stack",
-using a network-operations theme as the running example.
+A hands-on, twelve-notebook walk-through that builds an AI agent **from scratch** — starting
+with a single chat completion, building the agent loop by hand, then layering on the modern
+agent stack: RAG, MCP, structured outputs, memory, multi-agent orchestration, and
+evals/guardrails. Each notebook maps to one layer of the "agent stack", using a
+network-operations theme as the running example.
 
 The whole point fits in one sentence: **an agent is just a loop plus a capability table.**
 You build that loop by hand in ~35 lines (notebook 02), then watch it stay *identical* while
@@ -36,9 +38,16 @@ exactly what a framework gives you "for free".
 | [`04_codebase_explainer_agent.ipynb`](04_codebase_explainer_agent.ipynb) | The same loop with read-only filesystem tools (`ls`/`cat`/`grep`/`find`) that explains a project from its source | Agent = control plane (new resource) |
 | [`05_log_triage_agent.ipynb`](05_log_triage_agent.ipynb) | The same loop with read-only log tools (`ls`/`tail`/`grep`/`count`) that triages failures | Agent = control plane (new resource) |
 | [`06_sql_data_agent.ipynb`](06_sql_data_agent.ipynb) | The same loop with read-only SQL (`list`/`describe`/`SELECT`) over a SQLite database | Agent = control plane (new resource) |
+| [`07_rag_knowledge_agent.ipynb`](07_rag_knowledge_agent.ipynb) | RAG: embeddings, a hand-rolled vector store (numpy + argsort), retrieval as a *tool* in the same loop | Knowledge plane |
+| [`08_mcp_tool_server.ipynb`](08_mcp_tool_server.ipynb) | MCP: serve notebook 02's tools from a separate process; discover and call them over the Model Context Protocol | Capability table on the wire |
+| [`09_structured_outputs.ipynb`](09_structured_outputs.ipynb) | Structured outputs: JSON mode + Pydantic validation + retry — messy CLI text → a validated object | Model ↔ machine data plane |
+| [`10_memory_and_context.ipynb`](10_memory_and_context.ipynb) | Memory: multi-turn sessions, summarizing old turns (context budget), checkpoint & resume | Session layer |
+| [`11_multi_agent_orchestration.ipynb`](11_multi_agent_orchestration.ipynb) | Multi-agent: a supervisor whose *tools are the 04–06 specialist agents* — delegation is a tool call | Orchestration plane |
+| [`12_eval_and_guardrails.ipynb`](12_eval_and_guardrails.ipynb) | Evals (LLM-as-judge over a fixed question set) + guardrails (input/output ACLs vs prompt injection) | Assurance plane |
 
 Notebooks **04–06 reuse the exact control loop from notebook 02** — only the capability
-table changes. That repetition *is* the lesson.
+table changes. That repetition *is* the lesson — and notebooks 07–12 cash it in: the same
+loop gains retrieval, remote tools, schemas, memory, delegation, and a test harness.
 
 ### Same notebooks, with a browser UI
 
@@ -55,6 +64,12 @@ UI twins are there when you want something clickable to demo.
 | `04_codebase_explainer_agent.ipynb` | [`04_codebase_explainer_agent_with_ui.ipynb`](04_codebase_explainer_agent_with_ui.ipynb) |
 | `05_log_triage_agent.ipynb` | [`05_log_triage_agent_with_ui.ipynb`](05_log_triage_agent_with_ui.ipynb) |
 | `06_sql_data_agent.ipynb` | [`06_sql_data_agent_with_ui.ipynb`](06_sql_data_agent_with_ui.ipynb) |
+| `07_rag_knowledge_agent.ipynb` | [`07_rag_knowledge_agent_with_ui.ipynb`](07_rag_knowledge_agent_with_ui.ipynb) |
+| `08_mcp_tool_server.ipynb` | [`08_mcp_tool_server_with_ui.ipynb`](08_mcp_tool_server_with_ui.ipynb) |
+| `09_structured_outputs.ipynb` | [`09_structured_outputs_with_ui.ipynb`](09_structured_outputs_with_ui.ipynb) |
+| `10_memory_and_context.ipynb` | [`10_memory_and_context_with_ui.ipynb`](10_memory_and_context_with_ui.ipynb) |
+| `11_multi_agent_orchestration.ipynb` | [`11_multi_agent_orchestration_with_ui.ipynb`](11_multi_agent_orchestration_with_ui.ipynb) |
+| `12_eval_and_guardrails.ipynb` | [`12_eval_and_guardrails_with_ui.ipynb`](12_eval_and_guardrails_with_ui.ipynb) |
 
 The UI twins add one dependency (`gradio`); run the last cell and a local web UI opens.
 
@@ -94,16 +109,39 @@ back. The model talks; your loop acts.
   SQL tool only permits a single `SELECT`. Safe to run against real data and safe to demo live.
 - **Self-contained** — notebooks 05 and 06 generate their own sample data
   (`sample_logs/`, `inventory.db`); nothing external to set up.
+- **The modern agent stack, hand-rolled** — RAG is a numpy matrix and an argsort (07), MCP is
+  a ~10-line schema adapter (08), structured outputs are JSON mode + Pydantic + retry (09),
+  memory is a list of dicts you summarize and checkpoint (10), multi-agent is a loop whose
+  tools are other loops (11), and evals are a question set plus an LLM judge (12). No magic
+  anywhere.
 - **Any OpenAI-compatible provider** — OpenAI, OpenRouter, LiteLLM, or a local Ollama server,
   selected entirely through a `.env` file.
 - **Minimal dependencies** — the core agent notebooks need only the `openai` client. LangChain
-  is required for notebook 03 alone.
+  is required for notebook 03 alone; `numpy`, `mcp`, and `pydantic` only for notebooks 07, 08
+  and 09 respectively.
 
 ---
 
 ## Quick Start
 
-### Linux / macOS
+### Fastest: with [uv](https://docs.astral.sh/uv/) (any OS)
+
+The repo ships a `pyproject.toml` + `uv.lock`, so one command builds the environment:
+
+```bash
+git clone https://github.com/harshithsunku/build-your-first-ai-agent.git
+cd build-your-first-ai-agent
+
+uv sync                     # creates .venv from the lockfile
+cp .env.example .env        # then edit .env with your provider + key
+
+uv run jupyter lab          # launches Jupyter from the synced environment
+```
+
+No `uv` yet? Install it with `curl -LsSf https://astral.sh/uv/install.sh | sh`
+(or `pip install uv`).
+
+### Linux / macOS (classic venv)
 
 A helper script creates a virtual environment, installs everything, and registers a Jupyter
 kernel:
@@ -140,10 +178,11 @@ jupyter lab                   # pick the "Python (Build Your First AI Agent)" ke
 > `powershell -ExecutionPolicy Bypass -File .\setup.ps1`
 
 Prefer no virtualenv? Just `pip install -r requirements.txt`, `copy .env.example .env`,
-then `jupyter lab`.
+then `jupyter lab`. (`uv sync` from the section above also works on Windows.)
 
-Run the notebooks **in order** (01 → 06). Each is self-contained and re-explains what it
-needs, but the narrative builds on the previous one.
+Run the notebooks **in order** (01 → 12). Each is self-contained and re-explains what it
+needs, but the narrative builds on the previous one. 01–06 are the core arc (one loop, many
+tools); 07–12 layer the modern agent stack on top of the same loop.
 
 ### Configure your provider
 
@@ -197,9 +236,9 @@ VERIFY_SSL=false
 
 | Component | Needs |
 |-----------|-------|
-| **Python** | 3.8+ |
+| **Python** | 3.10+ (the `mcp` package for notebook 08 needs it; 01–07 and 09–12 run on 3.9) |
 | **Provider** | An API key for any OpenAI-compatible endpoint (OpenAI, OpenRouter, LiteLLM, Ollama…) |
-| **Model** | Notebook 01 runs on anything; **notebooks 02–06 need a tool-capable model** (e.g. `gpt-4o-mini`, `qwen2.5`, `llama3.1`). A 1B model usually can't drive function-calling reliably. |
+| **Model** | Notebooks 01 and 09 run on anything; **the other agent notebooks need a tool-capable model** (e.g. `gpt-4o-mini`, `qwen2.5`, `llama3.1`). A 1B model usually can't drive function-calling reliably. Notebook 07 additionally needs an **embeddings endpoint** (`text-embedding-3-small` on OpenAI, or set `EMBED_MODEL=nomic-embed-text` on Ollama). |
 
 ---
 
@@ -215,9 +254,16 @@ changes.
 | 04 codebase explainer | filesystem | `list_dir`, `read_file`, `grep`, `find_files` | paths sandboxed under `ROOT` |
 | 05 log triage | log files | `list_logs`, `tail`, `grep_logs`, `count_pattern` | paths sandboxed under `ROOT` |
 | 06 SQL data | SQLite database | `list_tables`, `describe_table`, `run_select` | `SELECT`-only; writes & chained statements rejected |
+| 07 RAG | generated runbooks | `search_docs` (embeddings + cosine top-k) | index built only from `runbooks/`; answers must cite sources |
+| 08 MCP | MCP server (subprocess) | `calculate_subnet`, `get_interface_status` — *discovered*, not hard-coded | same read-only/mocked tools, served over stdio |
+| 09 structured outputs | none (pure extraction) | — | Pydantic schema validation + retry |
+| 10 memory | network (mocked) | notebook 02's tools, unchanged | checkpoint file is local & git-ignored |
+| 11 multi-agent | code + logs + SQLite | `ask_codebase`, `ask_logs`, `ask_database` (each *is* an agent) | specialists keep 04–06's sandboxes and `SELECT`-only gate |
+| 12 evals | network (mocked) | notebook 02's tools + `guard_input`/`guard_output` | injection screened in, leaks screened out |
 
-Point notebook 04's `ROOT` at any source tree, 05's `ROOT` at any logs directory, or 06's
-`DB_PATH` at any SQLite file to run the agents against your own data.
+Point notebook 04's `ROOT` at any source tree, 05's `ROOT` at any logs directory, 06's
+`DB_PATH` at any SQLite file, or drop your own `.md` files into notebook 07's `runbooks/`
+to run the agents against your own data.
 
 ---
 
@@ -231,9 +277,17 @@ build-your-first-ai-agent/
 ├── 04_codebase_explainer_agent.ipynb    # same loop + read-only filesystem tools
 ├── 05_log_triage_agent.ipynb            # same loop + read-only log tools
 ├── 06_sql_data_agent.ipynb              # same loop + read-only SQL tools
-├── *_with_ui.ipynb                      # the same six notebooks wrapped in a Gradio UI
+├── 07_rag_knowledge_agent.ipynb         # RAG: hand-rolled vector store, retrieval as a tool
+├── 08_mcp_tool_server.ipynb             # MCP: tools served from a separate process
+├── 09_structured_outputs.ipynb          # JSON mode + Pydantic validation + retry
+├── 10_memory_and_context.ipynb          # sessions, summarization, checkpoint/resume
+├── 11_multi_agent_orchestration.ipynb   # supervisor + specialist agents (agents as tools)
+├── 12_eval_and_guardrails.ipynb         # LLM-as-judge evals + injection/leak guardrails
+├── *_with_ui.ipynb                      # the same twelve notebooks wrapped in a Gradio UI
 ├── .env.example                         # provider config template (copy to .env)
-├── requirements.txt                     # openai, httpx, python-dotenv, langchain*, gradio, jupyterlab, ipykernel
+├── pyproject.toml                       # PEP 621 metadata — `uv sync` sets everything up
+├── uv.lock                              # pinned, reproducible environment for uv
+├── requirements.txt                     # same deps for classic pip users
 ├── setup.sh                             # Linux/macOS: create .venv, install deps, register kernel
 ├── setup.ps1                            # Windows: same, for PowerShell
 ├── docs/agent-loop.svg                  # the agent-loop diagram used in this README

@@ -4,6 +4,9 @@
 # Generated demo artifacts (recreated by the notebooks)
 sample_logs/
 inventory.db
+runbooks/
+.agent_checkpoint.json
+mcp_network_server.py
 
 # Jupyter / Python
 .venv/

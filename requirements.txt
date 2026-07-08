@@ -8,6 +8,14 @@ python-dotenv>=1.0
 # Interactive browser UIs (the *_with_ui.ipynb notebooks)
 gradio>=4.0
 
+# Notebook 07 only (RAG: cosine similarity over embedding vectors;
+# the embeddings themselves come from the provider's /embeddings endpoint)
+numpy>=1.24
+# Notebook 08 only (MCP server + client)
+mcp>=1.0
+# Notebook 09 only (structured outputs: schema + validation)
+pydantic>=2.0
+
 # Notebook 03 only (LangChain / LangGraph version of the same agent)
 langchain>=0.2
 langgraph>=0.2
