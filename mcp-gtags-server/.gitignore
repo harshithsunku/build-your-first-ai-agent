@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+.pytest_cache/
+
+# gtags index files (never commit an index)
+GTAGS
+GRTAGS
+GPATH
+GSYMS
+
+# editors
+.idea/
+.vscode/
+*.swp
