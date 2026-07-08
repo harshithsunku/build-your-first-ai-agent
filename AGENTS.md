@@ -57,9 +57,10 @@ pip install openai langchain langgraph langchain-openai python-dotenv numpy mcp 
 ```
 
 (`numpy` is for notebook 07 only, `mcp` for 08 only, `pydantic` for 09 only;
-`gradio` only for the `*_with_ui` twins.) Python 3.10+ (`mcp` requires it).
-`pyproject.toml`, `uv.lock` and `requirements.txt` must stay in sync when
-dependencies change.
+`gradio` only for the `*_with_ui` twins.) **Python 3.10+ uniformly** — all
+notebooks target it, so modern syntax (builtin generics like `list[str]`,
+`X | Y` unions) is fine anywhere. `pyproject.toml`, `uv.lock` and
+`requirements.txt` must stay in sync when dependencies change.
 
 Configure the provider in a `.env` file at the repo root. Every notebook loads
 it automatically via `python-dotenv` (with a manual-parse fallback) and otherwise

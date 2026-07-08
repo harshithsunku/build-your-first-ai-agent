@@ -27,7 +27,13 @@ if command -v python3 >/dev/null 2>&1; then
 elif command -v python >/dev/null 2>&1; then
     PY=python
 else
-    echo "ERROR: no python3/python found on PATH. Install Python 3.8+ first." >&2
+    echo "ERROR: no python3/python found on PATH. Install Python 3.10+ first." >&2
+    return 1 2>/dev/null || exit 1
+fi
+
+# The notebooks target Python 3.10+ uniformly (the mcp package requires it).
+if ! "$PY" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)'; then
+    echo "ERROR: $($PY --version) found, but this repo needs Python 3.10+." >&2
     return 1 2>/dev/null || exit 1
 fi
 

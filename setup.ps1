@@ -33,7 +33,13 @@ foreach ($cand in @("python", "py")) {
     if (Get-Command $cand -ErrorAction SilentlyContinue) { $Py = $cand; break }
 }
 if (-not $Py) {
-    Write-Error "No 'python' or 'py' found on PATH. Install Python 3.8+ first."
+    Write-Error "No 'python' or 'py' found on PATH. Install Python 3.10+ first."
+}
+
+# The notebooks target Python 3.10+ uniformly (the mcp package requires it).
+& $Py -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)'
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "$(& $Py --version) found, but this repo needs Python 3.10+."
 }
 
 Write-Host "==> Using $(& $Py --version)"

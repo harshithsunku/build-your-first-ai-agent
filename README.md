@@ -161,7 +161,7 @@ jupyter lab                 # pick the "Python (Build Your First AI Agent)" kern
 
 ### Windows
 
-With Python 3.8+ installed, a PowerShell helper does the same as the Linux script:
+With Python 3.10+ installed, a PowerShell helper does the same as the Linux script:
 
 ```powershell
 git clone https://github.com/harshithsunku/build-your-first-ai-agent.git
@@ -236,7 +236,7 @@ VERIFY_SSL=false
 
 | Component | Needs |
 |-----------|-------|
-| **Python** | 3.10+ (the `mcp` package for notebook 08 needs it; 01–07 and 09–12 run on 3.9) |
+| **Python** | 3.10+ (uniform across all notebooks) |
 | **Provider** | An API key for any OpenAI-compatible endpoint (OpenAI, OpenRouter, LiteLLM, Ollama…) |
 | **Model** | Notebooks 01 and 09 run on anything; **the other agent notebooks need a tool-capable model** (e.g. `gpt-4o-mini`, `qwen2.5`, `llama3.1`). A 1B model usually can't drive function-calling reliably. Notebook 07 additionally needs an **embeddings endpoint** (`text-embedding-3-small` on OpenAI, or set `EMBED_MODEL=nomic-embed-text` on Ollama). |
 

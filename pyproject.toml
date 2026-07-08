@@ -6,7 +6,7 @@ version = "1.0.0"
 description = "A hands-on, twelve-notebook walk-through that builds an AI agent from scratch: the agent loop, tools, RAG, MCP, structured outputs, memory, multi-agent orchestration, and evals/guardrails."
 readme = "README.md"
 license = { file = "LICENSE" }
-# mcp (notebook 08) needs Python 3.10+; everything else runs on 3.9.
+# The whole repo targets Python 3.10+ uniformly (mcp needs it; the rest follow).
 requires-python = ">=3.10"
 dependencies = [
     # Core: notebooks 01, 02, 04, 05, 06 (raw OpenAI-compatible client)
