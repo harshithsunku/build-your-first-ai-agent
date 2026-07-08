@@ -106,9 +106,28 @@ The pattern proven out by semantic-code servers like [Serena](https://github.com
 
 | Tool | What the agent gets |
 |---|---|
+| `symbol_info` | **A one-shot overview card** — definitions, reference count, hottest files, and which tool to use next. The best first query for any unfamiliar symbol. |
 | `get_symbol_body` | **Just the source of a definition.** The 271-line `tcp_v4_rcv` function — not the 3,500-line file it lives in. Handles functions, structs, and multi-line macros. |
 | `find_callers` | **The call graph, deduplicated.** Every reference mapped to its enclosing function with call counts: 245 raw lines for `ext4_mark_inode_dirty` collapse to 62 callers. |
+| `call_hierarchy` | **Multi-level impact analysis.** Who calls X, who calls *those*, up to 5 levels — a cycle-safe, capped tree instead of N rounds of grep. |
+| `find_callees` | **The outgoing call graph.** What does this function call? Body-extracted call sites, each verified against the index, split into in-tree (with locations) and external. |
 | `summarize_references` | **A ranked per-file count.** The cheap first move for hot symbols — `kmalloc`'s 2,744 references become one screen of "where usage concentrates". |
+| `project_overview` | **Orientation in an unfamiliar repo** — file counts by top-level directory and language, straight from the index. |
+| `find_dead_symbols` | **Dead-code candidates** — every symbol a file defines that nothing references. |
+| `find_includers` | **Header blast radius** — every file that `#include`s a header, matched by basename. |
+
+A two-level `call_hierarchy` on the kernel's `ext4_mark_inode_dirty` — 87 compact lines instead of dozens of grep rounds:
+
+```text
+ext4_mark_inode_dirty  (definition: fs/ext4/ext4_jbd2.h:138)
+├─ ext4_rename  fs/ext4/namei.c  (6 sites)
+│  └─ ext4_rename2  fs/ext4/namei.c  (1 site)
+├─ swap_inode_boot_loader  fs/ext4/ioctl.c  (5 sites)
+│  └─ __ext4_ioctl  fs/ext4/ioctl.c  (1 site)
+├─ ext4_mkdir  fs/ext4/namei.c  (3 sites)
+│  └─ ext4_rename2  fs/ext4/namei.c  (1 site)
+...
+```
 
 ### Core lookups
 
@@ -128,9 +147,11 @@ Every query tool supports `limit`/`offset` pagination with a continuation footer
 ### The flow that saves your context window
 
 ```text
-1. summarize_references("kmalloc")          → where does usage concentrate? (1 line/file)
-2. find_callers("ext4_mark_inode_dirty")    → the actual call graph (1 line/caller)
+0. project_overview()                       → orient in an unfamiliar repo (12 lines)
+1. symbol_info("kmalloc")                   → definitions + usage spread + next step (12 lines)
+2. call_hierarchy("ext4_mark_inode_dirty")  → multi-level impact tree (1 line/caller)
 3. get_symbol_body("tcp_v4_rcv")            → read the ONE function that matters
+4. find_callees("tcp_v4_rcv")               → what it depends on, with locations
 ```
 
 A few hundred lines of context total — versus tens of thousands for the grep-and-read-files equivalent.
@@ -169,7 +190,7 @@ The tool descriptions are written to steer the model: they say *when* to use ind
 git clone https://github.com/harshithsunku/mcp-gtags-server
 cd mcp-gtags-server
 uv venv && uv pip install -e ".[dev]"
-pytest                        # 14 tests; auto-skip if GNU Global is absent
+pytest                        # 21 tests; auto-skip if GNU Global is absent
 npx @modelcontextprotocol/inspector gtags-mcp    # poke at it interactively
 ```
 
@@ -177,8 +198,10 @@ Tests build a real C project in a temp dir and exercise auto-indexing, auto-refr
 
 ## 🗺️ Roadmap
 
+- [x] Multi-level call hierarchy (`call_hierarchy`, depth 1–5) for transitive impact analysis
+- [x] Outgoing call graph (`find_callees`), symbol overview cards (`symbol_info`), project orientation (`project_overview`)
+- [x] Dead-code candidates (`find_dead_symbols`) and header blast radius (`find_includers`)
 - [ ] More languages via Pygments/ctags plugin parsers
-- [ ] Multi-level call hierarchy (`find_callers` with `depth > 1`) for transitive impact analysis
 - [ ] Structured (JSON) result variants for machine-readable output
 - [ ] Published benchmarks vs LSP-based MCP servers
 

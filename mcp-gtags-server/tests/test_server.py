@@ -204,6 +204,82 @@ def test_summarize_references(c_project):
     assert "main.c" in result and "util.h" in result
 
 
+CHAIN_C = """\
+#include "util.h"
+int level1(void) { return add_numbers(1, 2); }
+int level2(void) { return level1(); }
+int level3(void) { return level2(); }
+int rec_fn(int n) { return n <= 0 ? 0 : rec_fn(n - 1); }
+"""
+
+
+@requires_global
+def test_call_hierarchy_multi_level(c_project):
+    (c_project / "chain.c").write_text(CHAIN_C)
+    root = str(c_project)
+
+    deep = server.call_hierarchy("add_numbers", root, depth=3)
+    assert deep.startswith("add_numbers  (definition: util.c:3)")
+    assert "level1" in deep and "level2" in deep and "level3" in deep
+    # level2 is one level deeper than level1 in the rendered tree
+    l1 = next(l for l in deep.splitlines() if "level1" in l)
+    l2 = next(l for l in deep.splitlines() if "level2" in l)
+    assert len(l2) - len(l2.lstrip("│ ")) > len(l1) - len(l1.lstrip("│ "))
+
+    shallow = server.call_hierarchy("add_numbers", root, depth=1)
+    assert "level1" in shallow and "level2" not in shallow
+
+
+@requires_global
+def test_call_hierarchy_handles_recursion(c_project):
+    (c_project / "chain.c").write_text(CHAIN_C)
+    result = server.call_hierarchy("rec_fn", str(c_project), depth=3)
+    assert "(recursive)" in result
+
+
+@requires_global
+def test_find_callees(c_project):
+    root = str(c_project)
+    result = server.find_callees("main", root)
+    assert "add_numbers  util.c:3" in result
+    assert "External/unresolved: printf" in result
+
+
+@requires_global
+def test_symbol_info(c_project):
+    root = str(c_project)
+    result = server.symbol_info("add_numbers", root)
+    assert "defined at util.c:3" in result
+    assert "referenced 2 time(s) across 2 file(s)" in result
+    assert "next: get_symbol_body" in result
+
+
+@requires_global
+def test_project_overview(c_project):
+    result = server.project_overview(str(c_project))
+    assert "3 indexed source files" in result
+    assert ".c (2)" in result and ".h (1)" in result
+
+
+@requires_global
+def test_find_dead_symbols(c_project):
+    (c_project / "dead.c").write_text(
+        '#include "util.h"\n'
+        "int dead_fn(void) { return 0; }\n"
+        "int live_fn(void) { return add_numbers(1, 1); }\n"
+        "int caller_of_live(void) { return live_fn(); }\n"
+    )
+    result = server.find_dead_symbols("dead.c", str(c_project))
+    assert "dead_fn" in result
+    assert "live_fn  " not in result  # live_fn is referenced by caller_of_live
+
+
+@requires_global
+def test_find_includers(c_project):
+    result = server.find_includers("util.h", str(c_project))
+    assert "main.c" in result and "util.c" in result
+
+
 def test_bad_project_root():
     result = server.find_definition("main", "/nonexistent/path/xyz")
     assert result.startswith("Error")
