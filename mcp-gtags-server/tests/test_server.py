@@ -166,6 +166,44 @@ def test_long_lines_are_truncated(c_project):
     assert all(len(line) <= server.MAX_LINE_CHARS + 4 for line in result.splitlines())
 
 
+@requires_global
+def test_get_symbol_body_returns_only_the_function(c_project):
+    root = str(c_project)
+    body = server.get_symbol_body("add_numbers", root)
+    assert "=== util.c:3 ===" in body
+    assert "return a + b;" in body
+    # It must not leak the rest of the file or other files.
+    assert "#include" not in body
+    assert "printf" not in body
+
+
+@requires_global
+def test_get_symbol_body_multiline_macro(c_project):
+    (c_project / "macros.h").write_text(
+        "#define SQUARE(x) \\\n    ((x) * (x))\n\nint after_macro;\n"
+    )
+    body = server.get_symbol_body("SQUARE", str(c_project))
+    assert "((x) * (x))" in body
+    assert "after_macro" not in body
+
+
+@requires_global
+def test_find_callers_maps_refs_to_enclosing_function(c_project):
+    root = str(c_project)
+    result = server.find_callers("add_numbers", root)
+    # gtags also counts the util.h prototype as a reference; the call from
+    # main() must be attributed to the enclosing function `main`.
+    assert "main  main.c  1 call site at line(s) 7" in result
+
+
+@requires_global
+def test_summarize_references(c_project):
+    root = str(c_project)
+    result = server.summarize_references("add_numbers", root)
+    assert "2 references across 2 files:" in result
+    assert "main.c" in result and "util.h" in result
+
+
 def test_bad_project_root():
     result = server.find_definition("main", "/nonexistent/path/xyz")
     assert result.startswith("Error")

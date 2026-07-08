@@ -24,6 +24,7 @@ mcp = FastMCP("gtags")
 
 DEFAULT_LIMIT = 100
 MAX_LINE_CHARS = 200
+MAX_BODY_LINES = 300
 QUERY_TIMEOUT_SECONDS = 120
 INDEX_TIMEOUT_SECONDS = 600
 # Skip the incremental freshness check when the same root was updated this
@@ -107,6 +108,25 @@ def _paginate(text: str, limit: int, offset: int) -> str:
     return f"{body}\n{footer}"
 
 
+def _raw_global(
+    flags: list[str], project_root: str | None
+) -> tuple[str | None, Path | None, str | None]:
+    """Resolve root, ensure the index, run `global`. Returns (stdout, root, error)."""
+    if err := _check_global_installed():
+        return None, None, err
+    root, err = _effective_root(project_root)
+    if err:
+        return None, None, err
+    if err := _ensure_index(root):
+        return None, root, err
+    stdout, stderr, code = _run(["global", *flags], cwd=root)
+    # `global` exits non-zero both for real errors and for "no match found";
+    # only the former writes to stderr.
+    if code != 0 and stderr.strip():
+        return None, root, f"Error: global exited with code {code}: {stderr.strip()}"
+    return stdout, root, None
+
+
 def _query_global(
     flags: list[str],
     project_root: str | None,
@@ -115,21 +135,62 @@ def _query_global(
     offset: int = 0,
 ) -> str:
     """Shared plumbing for all read-only `global` queries."""
-    if err := _check_global_installed():
-        return err
-    root, err = _effective_root(project_root)
+    stdout, _, err = _raw_global(flags, project_root)
     if err:
         return err
-    if err := _ensure_index(root):
-        return err
-    stdout, stderr, code = _run(["global", *flags], cwd=root)
-    # `global` exits non-zero both for real errors and for "no match found";
-    # only the former writes to stderr.
-    if code != 0 and stderr.strip():
-        return f"Error: global exited with code {code}: {stderr.strip()}"
     if not stdout.strip():
         return empty_message
     return _paginate(stdout.rstrip(), limit, offset)
+
+
+def _parse_cxref(line: str) -> tuple[str, int, str, str] | None:
+    """Parse one `global -x` output line: symbol, line-number, path, source."""
+    parts = line.split(None, 3)
+    if len(parts) < 3 or not parts[1].isdigit():
+        return None
+    symbol, lineno, path = parts[0], int(parts[1]), parts[2]
+    source = parts[3] if len(parts) == 4 else ""
+    return symbol, lineno, path, source
+
+
+def _extract_body(file: Path, start_line: int) -> list[str]:
+    """Extract a C/C++ definition body starting at start_line (1-based).
+
+    Brace-counting heuristic: read until the block opened by the first `{`
+    closes. Prototypes, typedefs, and macros without a block end at the first
+    line not continued by a backslash that ends in `;` (or after a short
+    window if no block ever opens).
+    """
+    lines = file.read_text(errors="replace").splitlines()
+    i = start_line - 1
+    if i < 0 or i >= len(lines):
+        return []
+    out: list[str] = []
+    depth = 0
+    seen_brace = False
+    j = i
+    while j < len(lines) and len(out) < MAX_BODY_LINES:
+        line = lines[j]
+        out.append(line)
+        depth += line.count("{") - line.count("}")
+        if "{" in line:
+            seen_brace = True
+        if seen_brace and depth <= 0:
+            break
+        if not seen_brace:
+            stripped = line.rstrip()
+            if stripped.endswith("\\"):  # continuation (macro or split declaration)
+                j += 1
+                continue
+            if out[0].lstrip().startswith("#"):
+                break  # preprocessor directive ends when continuations stop
+            if stripped.endswith(";") or (j - i) >= 20:
+                break  # prototype/typedef/one-liner, or no block in sight
+        j += 1
+    else:
+        if len(out) >= MAX_BODY_LINES:
+            out.append(f"... body truncated at {MAX_BODY_LINES} lines ...")
+    return out
 
 
 @mcp.tool()
@@ -199,6 +260,152 @@ def find_references(
         limit,
         offset,
     )
+
+
+@mcp.tool()
+def get_symbol_body(
+    symbol: str,
+    project_root: str | None = None,
+    max_definitions: int = 3,
+) -> str:
+    """Return the full source code of a symbol's definition — just the body.
+
+    Use this INSTEAD of reading a whole file when you need to see how a
+    function, struct, or macro is implemented. It jumps straight to the
+    definition via the index and extracts only that definition's lines, so
+    a one-screen function never costs you a 5000-line file read.
+
+    Args:
+        symbol: Exact symbol name, e.g. "tcp_v4_rcv".
+        project_root: Project directory. Omit to use the server's default.
+        max_definitions: If the symbol has multiple definitions, return at
+            most this many bodies (default 3).
+    """
+    stdout, root, err = _raw_global(["-x", "--", symbol], project_root)
+    if err:
+        return err
+    refs = [r for line in stdout.splitlines() if (r := _parse_cxref(line))]
+    if not refs:
+        return f"No definition found for symbol '{symbol}'."
+    chunks: list[str] = []
+    for _, lineno, path, _ in refs[:max_definitions]:
+        body = _extract_body(root / path, lineno)
+        chunks.append(f"=== {path}:{lineno} ===\n" + "\n".join(body))
+    if len(refs) > max_definitions:
+        chunks.append(
+            f"... {len(refs) - max_definitions} more definition(s) not shown; "
+            "use find_definition to list them all."
+        )
+    return "\n\n".join(chunks)
+
+
+@mcp.tool()
+def find_callers(
+    symbol: str,
+    project_root: str | None = None,
+    limit: int = DEFAULT_LIMIT,
+    offset: int = 0,
+) -> str:
+    """Find the FUNCTIONS that call a symbol, deduplicated, with call counts.
+
+    Use this INSTEAD of find_references when you want the call graph rather
+    than raw match lines: each reference site is mapped to its enclosing
+    function, so 100 call sites inside one loop-heavy caller collapse to a
+    single result line. This is the highest signal-to-noise view of "who
+    uses this?" on a large codebase.
+
+    Each result line has the format: caller-function  file  N call site(s) at lines ...
+
+    Args:
+        symbol: Exact symbol name whose callers you want.
+        project_root: Project directory. Omit to use the server's default.
+        limit: Maximum result lines to return (default 100).
+        offset: Skip this many result lines (for pagination).
+    """
+    stdout, root, err = _raw_global(["-rx", "--", symbol], project_root)
+    if err:
+        return err
+    refs = [r for line in stdout.splitlines() if (r := _parse_cxref(line))]
+    if not refs:
+        return f"No references found for symbol '{symbol}'."
+
+    by_file: dict[str, list[int]] = {}
+    for _, lineno, path, _ in refs:
+        by_file.setdefault(path, []).append(lineno)
+    if len(by_file) > 500:
+        return (
+            f"'{symbol}' is referenced in {len(by_file)} files ({len(refs)} sites) — "
+            "too broad for caller analysis. Use summarize_references to see the "
+            "per-file distribution, then narrow down."
+        )
+
+    callers: dict[tuple[str, str], list[int]] = {}
+    for path, ref_lines in by_file.items():
+        defs_out, _, def_err = _raw_global(["-fx", "--", path], project_root)
+        defs: list[tuple[int, str]] = []
+        if defs_out and not def_err:
+            defs = sorted(
+                (d[1], d[0])
+                for line in defs_out.splitlines()
+                if (d := _parse_cxref(line))
+            )
+        for ref_line in sorted(ref_lines):
+            enclosing = "(file scope)"
+            for def_line, def_sym in defs:
+                if def_line <= ref_line:
+                    enclosing = def_sym
+                else:
+                    break
+            callers.setdefault((enclosing, path), []).append(ref_line)
+
+    rows = []
+    for (caller, path), sites in sorted(
+        callers.items(), key=lambda kv: (-len(kv[1]), kv[0])
+    ):
+        shown = ", ".join(str(n) for n in sites[:5])
+        more = f", +{len(sites) - 5} more" if len(sites) > 5 else ""
+        plural = "s" if len(sites) != 1 else ""
+        rows.append(f"{caller}  {path}  {len(sites)} call site{plural} at line(s) {shown}{more}")
+    return _paginate("\n".join(rows), limit, offset)
+
+
+@mcp.tool()
+def summarize_references(
+    symbol: str,
+    project_root: str | None = None,
+    limit: int = DEFAULT_LIMIT,
+    offset: int = 0,
+) -> str:
+    """Per-file reference counts for a symbol — the cheapest wide view.
+
+    Use this FIRST for very widely used symbols (thousands of references):
+    it collapses the result to one line per file, sorted by count, so you
+    can see where usage concentrates and then drill into a specific file
+    with find_references or find_callers. Never floods the context window.
+
+    Each result line has the format: count  file.
+
+    Args:
+        symbol: Exact symbol name.
+        project_root: Project directory. Omit to use the server's default.
+        limit: Maximum result lines to return (default 100).
+        offset: Skip this many result lines (for pagination).
+    """
+    stdout, _, err = _raw_global(["-rx", "--", symbol], project_root)
+    if err:
+        return err
+    refs = [r for line in stdout.splitlines() if (r := _parse_cxref(line))]
+    if not refs:
+        return f"No references found for symbol '{symbol}'."
+    counts: dict[str, int] = {}
+    for _, _, path, _ in refs:
+        counts[path] = counts.get(path, 0) + 1
+    rows = [
+        f"{count:6d}  {path}"
+        for path, count in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+    ]
+    header = f"{len(refs)} references across {len(counts)} files:"
+    return header + "\n" + _paginate("\n".join(rows), limit, offset)
 
 
 @mcp.tool()

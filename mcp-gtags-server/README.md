@@ -29,10 +29,22 @@ Reproduce with [`scripts/benchmark.sh`](scripts/benchmark.sh):
 
 All query tools take optional `limit` (default 100) and `offset` parameters for pagination, and `project_root` may be omitted (defaults to the server's working directory, or `--root` / `GTAGS_MCP_ROOT` if configured). Indexing happens automatically on first use.
 
+### Symbol-level tools (the noise killers)
+
+These follow the pattern proven out by semantic-code MCP servers like [Serena](https://github.com/oraios/serena): give the agent the *symbol*, not the file.
+
+| Tool | What it does |
+|---|---|
+| `get_symbol_body` | Return **just the source of a definition** — the agent sees the 271-line `tcp_v4_rcv` function, not the 3,500-line file around it |
+| `find_callers` | Map every reference to its **enclosing function**, deduplicated with call counts — 245 raw match lines for `ext4_mark_inode_dirty` collapse to 62 caller functions |
+| `summarize_references` | **Per-file reference counts**, sorted — the cheap first move for symbols with thousands of uses (`kmalloc`: 2,744 references → a ranked file list) |
+
+### Core lookup tools
+
 | Tool | What it does | Underlying command |
 |---|---|---|
 | `find_definition` | Where is this symbol defined? (`case_insensitive` opt.) | `global -x` |
-| `find_references` | Who calls/uses this symbol? (`case_insensitive` opt.) | `global -rx` |
+| `find_references` | Raw reference lines for a symbol (`case_insensitive` opt.) | `global -rx` |
 | `find_symbol_usages` | Usages of symbols with no in-tree definition (e.g. libc calls) | `global -sx` |
 | `grep_project` | Regex search across indexed files (`case_insensitive` opt.) | `global -gx` |
 | `list_file_symbols` | All symbols defined in one file (a file's API surface) | `global -fx` |
@@ -40,6 +52,14 @@ All query tools take optional `limit` (default 100) and `offset` parameters for 
 | `find_files` | Indexed files whose path matches a regex | `global -P` |
 | `index_project` | Force a full index rebuild (rarely needed) | `gtags` |
 | `update_index` | Force an incremental refresh (rarely needed) | `global -u` |
+
+### A typical agent flow on a huge tree
+
+1. `summarize_references("kmalloc")` → see where usage concentrates (1 line per file)
+2. `find_callers("ext4_mark_inode_dirty")` → the actual call graph, one line per caller
+3. `get_symbol_body("tcp_v4_rcv")` → read the one function that matters
+
+Total context consumed: a few hundred lines — versus tens of thousands for the grep-and-read-files equivalent.
 
 ## Prerequisites
 
@@ -135,6 +155,7 @@ npx @modelcontextprotocol/inspector gtags-mcp
 
 - Languages beyond gtags' native set (C, C++, Yacc, Java, PHP, assembly) via the Pygments/ctags plugin parsers.
 - Structured (JSON) result variants for clients that want machine-readable output.
+- Multi-level call hierarchy (`find_callers` with `depth > 1`) for transitive impact analysis.
 
 ## License
 
