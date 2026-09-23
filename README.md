@@ -26,6 +26,10 @@ No frameworks required for the core idea — notebooks 01, 02, 04, 05 and 06 use
 `openai` client. Notebook 03 then shows the same agent in LangChain/LangGraph so you can see
 exactly what a framework gives you "for free".
 
+> **➡️ Next: [Learn Jev end to end](https://github.com/harshithsunku/learn-jev-end-to-end)**, the sequel.
+> It reuses this exact agent loop and adds a second, much faster kind of model, Jev, at five decision
+> points (router, tool guard, judge and more) across 13 use cases. [Read the docs](https://harshithsunku.github.io/learn-jev-end-to-end/).
+
 ---
 
 ## What you'll learn
